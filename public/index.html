@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ai-worklog</title>
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>ai-worklog</h1>
+  <div class="filters">
+    <div class="presets">
+      <button data-preset="today">Today</button>
+      <button data-preset="week">This week</button>
+      <button data-preset="month">This month</button>
+      <button data-preset="30d" class="active">Last 30 days</button>
+    </div>
+    <label>From <input type="date" id="from"></label>
+    <label>To <input type="date" id="to"></label>
+    <details class="project-filter" id="project-filter">
+      <summary>All projects</summary>
+      <div class="project-options" id="project-options"></div>
+    </details>
+    <button id="settings-btn" title="Project mappings">&#9881;</button>
+    <button id="export-btn" title="Export to timester">Export</button>
+  </div>
+</header>
+
+<main>
+  <section class="cards" id="cards"></section>
+
+  <section class="chart-section">
+    <div class="chart-head">
+      <h2>Time per project</h2>
+      <div class="bucket-switch" id="bucket-switch">
+        <button data-bucket="day" class="active">Day</button>
+        <button data-bucket="week">Week</button>
+        <button data-bucket="month">Month</button>
+      </div>
+    </div>
+    <div id="chart"></div>
+    <div id="chart-legend" class="legend"></div>
+  </section>
+
+  <section>
+    <h2>Work log</h2>
+    <table id="days-table">
+      <thead>
+        <tr><th></th><th>Date</th><th>Project</th><th>Time</th><th>Sessions</th><th>Delivered</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p id="empty" class="empty" hidden>No activity in this range.</p>
+  </section>
+</main>
+
+<dialog id="settings-dialog">
+  <h2>Project mappings</h2>
+  <p class="hint">Each directory maps to a project. Rename to merge projects; set a client for timester export; ignore throwaway dirs.</p>
+  <div id="mappings"></div>
+  <div class="dialog-actions"><button id="settings-close">Close</button></div>
+</dialog>
+
+<dialog id="export-dialog">
+  <h2>Export to timester</h2>
+  <p class="hint">One entry per project per day, current date range. Merge-import the file in timester (not the destructive import).</p>
+  <label>Rounding
+    <select id="export-rounding">
+      <option value="0">None</option>
+      <option value="15">Up to 15 min</option>
+      <option value="30">Up to 30 min</option>
+    </select>
+  </label>
+  <div class="dialog-actions">
+    <button id="export-download">Download JSON</button>
+    <button id="export-close">Close</button>
+  </div>
+</dialog>
+
+<script src="charts.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+#!/bin/bash
+# ai-worklog launcher: ingest → serve → open browser → re-ingest every 5 min.
+# Ctrl-C stops the server and the loop.
+set -u
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PORT=8111
+
+php "$ROOT/ingest.php" "$@"
+
+if ! curl -s -o /dev/null --max-time 1 "http://localhost:$PORT/api/projects"; then
+    php -S "localhost:$PORT" -t "$ROOT/public" "$ROOT/serve.php" >/dev/null 2>&1 &
+    SERVER_PID=$!
+    trap 'kill $SERVER_PID 2>/dev/null' INT TERM EXIT
+    sleep 0.5
+else
+    SERVER_PID=""
+    trap 'exit 0' INT TERM
+fi
+
+open "http://localhost:$PORT"
+
+echo "worklog running at http://localhost:$PORT — re-ingesting every 5 min, Ctrl-C to stop"
+while true; do
+    sleep 300
+    php "$ROOT/ingest.php" "$@" >/dev/null 2>&1
+done

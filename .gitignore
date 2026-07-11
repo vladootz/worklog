@@ -1,0 +1,6 @@
+ai-worklog.db*
+.DS_Store
+dist/
+_plans/
+websquadesign.md
+docs/plans/
