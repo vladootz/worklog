@@ -34,7 +34,7 @@ git clone https://github.com/vladootz/ai-worklog.git && cd ai-worklog
 ./serve.sh
 ```
 
-That's it — first run ingests your session history into `ai-worklog.db`, then opens the dashboard at [http://localhost:8111](http://localhost:8111).
+That's it — first run ingests your session history into `ai-worklog.db`, then serves the dashboard at [http://localhost:8111](http://localhost:8111).
 
 For day-to-day use, the full launcher also re-ingests every 5 minutes while the dashboard is open:
 
