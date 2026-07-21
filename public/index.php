@@ -1,17 +1,32 @@
 <?php
-// Router for the built-in server: php -S localhost:8111 -t public serve.php
-// Serves /api/* as JSON; everything else falls through to public/ static files.
+// Front controller. Serves /api/* as JSON; everything else is static from this docroot.
+// Runs under Herd/nginx (docroot mapped here by LocalValetDriver) and the built-in server:
+//   php -S localhost:8111 -t public public/index.php
 // The web layer only ever reads/writes ai-worklog.db — never sources, never Ollama.
 
-$uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
+
 if (!str_starts_with($uri, '/api/')) {
-    return false; // static file from docroot
+    if (PHP_SAPI === 'cli-server' && $uri !== '/' && is_file(__DIR__ . $uri)) {
+        return false; // built-in server handles the static file itself
+    }
+    // Under nginx existing static files never reach PHP (LocalValetDriver serves them).
+    if ($uri === '/' || $uri === '/index.html') {
+        header('Content-Type: text/html; charset=utf-8');
+        readfile(__DIR__ . '/index.html');
+        exit;
+    }
+    http_response_code(404);
+    header('Content-Type: text/plain');
+    echo 'not found';
+    exit;
 }
 
-require __DIR__ . '/lib/Config.php';
-require __DIR__ . '/lib/Db.php';
-require __DIR__ . '/lib/Api.php';
-require __DIR__ . '/lib/TimesterExport.php';
+$root = dirname(__DIR__);
+require $root . '/lib/Config.php';
+require $root . '/lib/Db.php';
+require $root . '/lib/Api.php';
+require $root . '/lib/TimesterExport.php';
 
 $config = new Config();
 $db = new Db($config->dbPath);

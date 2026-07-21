@@ -40,7 +40,7 @@ Replaces manual entry into timester; timester remains the billing system of reco
 ```
 ~/projects/ai-worklog/
   ingest.php          # CLI: scan sources → sessions/blocks/commits → lazy digests
-  serve.php           # router for php -S (static + /api/*)
+  public/index.php    # front controller (static fallthrough + /api/*) — php -S and Herd/nginx
   lib/                # Db.php, ClaudeSource.php, OpencodeSource.php, Coalesce.php,
                       # GitCommits.php, Ollama.php, TimesterExport.php
   public/             # index.html, app.js, charts.js (SVG), style.css

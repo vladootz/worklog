@@ -8,7 +8,7 @@ PORT=8111
 php "$ROOT/ingest.php" "$@"
 
 if ! curl -s -o /dev/null --max-time 1 "http://localhost:$PORT/api/projects"; then
-    php -S "localhost:$PORT" -t "$ROOT/public" "$ROOT/serve.php" >/dev/null 2>&1 &
+    php -S "localhost:$PORT" -t "$ROOT/public" "$ROOT/public/index.php" >/dev/null 2>&1 &
     SERVER_PID=$!
     trap 'kill $SERVER_PID 2>/dev/null' INT TERM EXIT
     sleep 0.5

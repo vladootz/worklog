@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Start the ai-worklog dashboard at http://localhost:8111.
 # Server only — for ingest + serve + re-ingest every 5 min use bin/worklog instead.
+# Herd users don't need this: the site serves at https://worklog.test (see README).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 PORT="${PORT:-8111}"
@@ -23,4 +24,4 @@ if curl -s -o /dev/null --max-time 1 "http://localhost:$PORT/api/projects"; then
 fi
 
 echo "Serving http://localhost:$PORT — Ctrl-C to stop"
-exec php -S "localhost:$PORT" -t "$ROOT/public" "$ROOT/serve.php"
+exec php -S "localhost:$PORT" -t "$ROOT/public" "$ROOT/public/index.php"

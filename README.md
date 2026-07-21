@@ -46,7 +46,7 @@ Or run the pieces manually:
 
 ```sh
 php ingest.php                              # incremental ingest + digests (last 14 days)
-php -S localhost:8111 -t public serve.php   # serve the dashboard
+php -S localhost:8111 -t public public/index.php   # serve the dashboard
 ```
 
 Useful ingest flags:
