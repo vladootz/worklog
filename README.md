@@ -49,6 +49,10 @@ php ingest.php                              # incremental ingest + digests (last
 php -S localhost:8111 -t public public/index.php   # serve the dashboard
 ```
 
+### Laravel Herd
+
+If the repo sits in a [Herd](https://herd.laravel.com)-parked directory (e.g. `~/Sites/worklog`), the dashboard serves automatically at `https://worklog.test` — no `serve.sh` needed. `LocalValetDriver.php` pins the docroot to `public/`, so `ai-worklog.db`, `lib/`, and `ingest.php` are never web-accessible. Isolate the site to any PHP ≥ 8.2 (`herd isolate 8.5`). Herd only serves; ingest still runs from the CLI (`php ingest.php`, or `bin/worklog` for the 5-minute loop).
+
 Useful ingest flags:
 
 | Flag | Effect |
