@@ -56,6 +56,7 @@ class OpencodeSource
     {
         try {
             $src = new SQLite3($this->config->opencodeDb, SQLITE3_OPEN_READONLY);
+            $src->enableExceptions(true); // warning mode deprecated since 8.3; lazy WAL failures must throw so the snapshot fallback engages
             $src->busyTimeout(3000);
             $src->querySingle('SELECT COUNT(*) FROM session'); // probe: WAL readonly can fail lazily
             return $src;
