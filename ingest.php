@@ -18,33 +18,67 @@ require __DIR__ . '/lib/Digests.php';
 
 $config = new Config();
 $db = new Db($config->dbPath);
+// --digests-only skips source ingest and runs Ollama digests alone (the web layer's
+// background pass); --skip-digests does the opposite. Neither → full run.
+$opts = getopt('', ['skip-digests', 'digests-only', 'digest-days:', 'digest-from:', 'digest-to:']);
 
 echo "ai-worklog ingest — db: {$config->dbPath}, tz: " . date_default_timezone_get() . "\n";
 
-$db->pdo->beginTransaction();
-$claudeStats = (new ClaudeSource($db, $config))->ingest();
-$db->pdo->commit();
-echo "claude: {$claudeStats['sessions']} sessions ingested, {$claudeStats['skipped']} unchanged\n";
+if (!isset($opts['digests-only'])) {
+    $db->pdo->beginTransaction();
+    $claudeStats = (new ClaudeSource($db, $config))->ingest();
+    $db->pdo->commit();
+    echo "claude: {$claudeStats['sessions']} sessions ingested, {$claudeStats['skipped']} unchanged\n";
 
-$db->pdo->beginTransaction();
-$ocStats = (new OpencodeSource($db, $config))->ingest();
-$db->pdo->commit();
-echo "opencode: {$ocStats['sessions']} sessions ingested, {$ocStats['skipped']} unchanged\n";
+    $db->pdo->beginTransaction();
+    $ocStats = (new OpencodeSource($db, $config))->ingest();
+    $db->pdo->commit();
+    echo "opencode: {$ocStats['sessions']} sessions ingested, {$ocStats['skipped']} unchanged\n";
 
-$db->pdo->beginTransaction();
-$gitStats = (new GitCommits($db, $config))->ingest();
-$db->pdo->commit();
-echo "git: {$gitStats['commits']} commits upserted across {$gitStats['dirs']} repos\n";
+    $db->pdo->beginTransaction();
+    $gitStats = (new GitCommits($db, $config))->ingest();
+    $db->pdo->commit();
+    echo "git: {$gitStats['commits']} commits upserted across {$gitStats['dirs']} repos\n";
 
-$opts = getopt('', ['skip-digests', 'digest-days:', 'digest-from:', 'digest-to:']);
+    settingStamp($db, 'last_ingest_at');
+}
+
 if (!isset($opts['skip-digests'])) {
+    // The web-triggered background pass runs with --digests-only; serialize those on a
+    // non-blocking lock so repeated page loads can't pile up concurrent Ollama runs.
+    // Plain CLI/full runs (no --digests-only) are unlocked and always generate.
+    $digestLock = null;
+    if (isset($opts['digests-only'])) {
+        $digestLock = fopen(__DIR__ . '/.ingest-digests.lock', 'c');
+        if ($digestLock === false || !flock($digestLock, LOCK_EX | LOCK_NB)) {
+            echo "digests: already running — skipped\n";
+            exit(0);
+        }
+    }
     $digests = new Digests($db, $config, new Api($db, $config), new Ollama($config->ollamaUrl, $config->ollamaModel));
     $dStats = $digests->run(
         (int) ($opts['digest-days'] ?? $config->digestDays),
         $opts['digest-from'] ?? null,
         $opts['digest-to'] ?? null
     );
-    echo isset($dStats['skipped_ollama_down'])
-        ? "digests: skipped (Ollama not reachable at {$config->ollamaUrl})\n"
-        : "digests: {$dStats['generated']} generated, {$dStats['cached']} cached\n";
+    if (isset($dStats['skipped_ollama_down'])) {
+        echo "digests: skipped (Ollama not reachable at {$config->ollamaUrl})\n";
+    } else {
+        echo "digests: {$dStats['generated']} generated, {$dStats['cached']} cached\n";
+        settingStamp($db, 'last_digest_at');
+    }
+    if ($digestLock) {
+        flock($digestLock, LOCK_UN);
+        fclose($digestLock);
+    }
+}
+
+/** Record a unix-timestamp marker in the settings table (used for freshness checks). */
+function settingStamp(Db $db, string $key): void
+{
+    $db->exec(
+        "INSERT INTO settings (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [$key, (string) time()]
+    );
 }

@@ -1,4 +1,7 @@
 ai-worklog.db*
+.ingest.lock
+.ingest-digests.lock
+.ingest-digests.log
 .DS_Store
 dist/
 _plans/

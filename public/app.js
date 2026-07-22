@@ -242,5 +242,62 @@ document.getElementById('export-download').addEventListener('click', () => {
   window.location.href = '/api/export/timester?' + qs() + '&rounding=' + rounding;
 });
 
+// ---------- read data (ingest on demand) ----------
+const STALE_SECS = 5 * 60; // auto-refresh on load only if the last ingest is older than this
+const refreshBtn = document.getElementById('refresh-btn');
+let refreshing = false;
+
+async function reloadAll() {
+  await Promise.all([loadProjects(), load()]);
+}
+async function lastDigestAt() {
+  try { return (await getJSON('/api/status')).last_digest_at || 0; }
+  catch { return 0; }
+}
+
+async function refresh() {
+  if (refreshing) return;
+  refreshing = true;
+  refreshBtn.disabled = true;
+  refreshBtn.classList.add('loading');
+  refreshBtn.textContent = 'Reading…';
+  const digestBefore = await lastDigestAt();
+  try {
+    await fetch('/api/ingest', { method: 'POST' });
+    await reloadAll();
+    refreshBtn.textContent = 'Read data';
+    refreshBtn.title = 'Last read at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    watchDigests(digestBefore);
+  } catch (e) {
+    refreshBtn.textContent = 'Retry read';
+    refreshBtn.title = String(e);
+  } finally {
+    refreshBtn.classList.remove('loading');
+    refreshBtn.disabled = false;
+    refreshing = false;
+  }
+}
+
+// The Ollama digest pass runs in the background after /api/ingest returns; poll its
+// timestamp for a few minutes and reload once it advances so new bullets appear on their own.
+function watchDigests(before) {
+  let tries = 0;
+  const iv = setInterval(async () => {
+    if (++tries > 20 || (await lastDigestAt()) > before) {
+      clearInterval(iv);
+      if (tries <= 20) load();
+    }
+  }, 15000);
+}
+
+refreshBtn.addEventListener('click', refresh);
+
+// Initial paint from the cached DB, then re-read sources if the data has gone stale.
 loadProjects();
 load();
+(async () => {
+  try {
+    const s = await getJSON('/api/status');
+    if (!s.last_ingest_at || (s.now - s.last_ingest_at) > STALE_SECS) refresh();
+  } catch { /* status unavailable — keep the cached view as-is */ }
+})();

@@ -142,6 +142,43 @@ try {
             jsonOut($payload);
             break;
 
+        case $uri === '/api/status':
+            jsonOut([
+                'last_ingest_at' => (int) ($db->val("SELECT value FROM settings WHERE key = 'last_ingest_at'") ?? 0),
+                'last_digest_at' => (int) ($db->val("SELECT value FROM settings WHERE key = 'last_digest_at'") ?? 0),
+                'now' => time(),
+            ]);
+            break;
+
+        // Re-read session data on demand (the "Read data" button / stale-on-load trigger).
+        // Spawns the real CLI ingest — never runs it in-process — so ingest.php's cli-only
+        // guard and the "web layer never touches sources/Ollama directly" rule both hold.
+        // The command uses only server-side constants, so there is no injection surface.
+        case $uri === '/api/ingest' && $_SERVER['REQUEST_METHOD'] === 'POST':
+            $php = $config->phpCli();
+            $ingest = $root . '/ingest.php';
+            $lock = fopen($root . '/.ingest.lock', 'c');
+            if ($lock === false) {
+                jsonOut(['error' => 'cannot open ingest lock'], 500);
+                break;
+            }
+            if (!flock($lock, LOCK_EX | LOCK_NB)) {
+                fclose($lock);
+                jsonOut(['ok' => true, 'running' => true]); // an ingest is already in progress
+                break;
+            }
+            // Phase 1: fast source ingest, synchronous — time stats refresh right away.
+            $out = [];
+            $code = 1;
+            exec(escapeshellarg($php) . ' ' . escapeshellarg($ingest) . ' --skip-digests 2>&1', $out, $code);
+            flock($lock, LOCK_UN);
+            fclose($lock);
+            // Phase 2: Ollama digests detached in the background; surface on a later refresh.
+            exec('nohup ' . escapeshellarg($php) . ' ' . escapeshellarg($ingest)
+                . ' --digests-only > ' . escapeshellarg($root . '/.ingest-digests.log') . ' 2>&1 &');
+            jsonOut(['ok' => $code === 0, 'exit' => $code, 'message' => trim((string) end($out))]);
+            break;
+
         default:
             jsonOut(['error' => 'not found'], 404);
     }

@@ -24,6 +24,37 @@ class Config
         self::initTimezone();
     }
 
+    /**
+     * Absolute path to a CLI php binary the web layer can shell out to for ingest.
+     * Under Herd/nginx the request runs on PHP-FPM whose PATH usually lacks `php`
+     * (macOS ships none), so `exec('php ...')` would fail — resolve it explicitly.
+     * Order: $WORKLOG_PHP → `php` on PATH → Herd's bundled CLI → Homebrew.
+     */
+    public function phpCli(): string
+    {
+        $env = getenv('WORKLOG_PHP');
+        if ($env && is_executable($env)) {
+            return $env;
+        }
+        $onPath = trim((string) @shell_exec('command -v php 2>/dev/null'));
+        if ($onPath !== '' && is_executable($onPath)) {
+            return $onPath;
+        }
+        $candidates = [
+            $this->home . '/Library/Application Support/Herd/bin/php',
+            '/opt/homebrew/bin/php',
+            '/opt/homebrew/opt/php@8.2/bin/php',
+            '/usr/local/bin/php',
+            '/usr/bin/php',
+        ];
+        foreach ($candidates as $c) {
+            if (is_executable($c)) {
+                return $c;
+            }
+        }
+        return 'php'; // last resort — let exec fail loudly if truly unavailable
+    }
+
     public static function initTimezone(): void
     {
         // The system timezone must win over php.ini (Homebrew ships UTC),

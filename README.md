@@ -51,7 +51,9 @@ php -S localhost:8111 -t public public/index.php   # serve the dashboard
 
 ### Laravel Herd
 
-If the repo sits in a [Herd](https://herd.laravel.com)-parked directory (e.g. `~/Sites/worklog`), the dashboard serves automatically at `https://worklog.test` — no `serve.sh` needed. `LocalValetDriver.php` pins the docroot to `public/`, so `ai-worklog.db`, `lib/`, and `ingest.php` are never web-accessible. Isolate the site to any PHP ≥ 8.2 (`herd isolate 8.5`). Herd only serves; ingest still runs from the CLI (`php ingest.php`, or `bin/worklog` for the 5-minute loop).
+If the repo sits in a [Herd](https://herd.laravel.com)-parked directory (e.g. `~/Sites/worklog`), the dashboard serves automatically at `https://worklog.test` — no `serve.sh` needed. `LocalValetDriver.php` pins the docroot to `public/`, so `ai-worklog.db`, `lib/`, and `ingest.php` are never web-accessible. Isolate the site to any PHP ≥ 8.2 (`herd isolate 8.5`).
+
+Because Herd only serves (nothing runs the 5-minute re-ingest loop that `bin/worklog` provides), the dashboard keeps itself fresh from the browser instead of cron: it re-ingests on load when the last ingest is over 5 minutes old, and the **Read data** button in the header forces a re-read on demand. The web layer never ingests in-process — it shells out to the CLI (`Config::phpCli()` resolves a PHP ≥ 8.2 binary; override with `WORKLOG_PHP`), so `ingest.php`'s cli-only guard still holds. Time stats refresh synchronously (`--skip-digests`, ~8s); the Ollama digest bullets regenerate in a background pass and appear a moment later. Running `php ingest.php` or `bin/worklog` from the CLI still works exactly as before.
 
 Useful ingest flags:
 

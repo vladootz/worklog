@@ -10,6 +10,9 @@ class Db
         $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $this->pdo->exec('PRAGMA foreign_keys = ON');
         $this->pdo->exec('PRAGMA journal_mode = WAL');
+        // Web-triggered ingest can overlap the background digest run; make writers
+        // wait for the lock (up to 5s) instead of failing with "database is locked".
+        $this->pdo->exec('PRAGMA busy_timeout = 5000');
         $this->migrate();
     }
 

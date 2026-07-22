@@ -17,7 +17,6 @@ class Ollama
             CURLOPT_TIMEOUT => 3,
         ]);
         $ok = curl_exec($ch) !== false && curl_getinfo($ch, CURLINFO_RESPONSE_CODE) === 200;
-        curl_close($ch);
         return $ok;
     }
 
@@ -37,7 +36,6 @@ class Ollama
             ]),
         ]);
         $raw = curl_exec($ch);
-        curl_close($ch);
         if ($raw === false) {
             return null;
         }
