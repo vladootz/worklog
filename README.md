@@ -25,7 +25,7 @@ Zero dependencies by design: **PHP 8.2 + SQLite + vanilla JS/CSS/SVG.** No Compo
 - At least one data source:
   - Claude Code sessions in `~/.claude/projects`
   - opencode DB at `~/.local/share/opencode/opencode.db` (opened strictly read-only)
-- *(Optional)* [Ollama](https://ollama.com) with `qwen2.5-coder:7b` for daily digest bullets — everything else works without it
+- *(Optional)* [Ollama](https://ollama.com) with `qwen3:14b` for daily digest bullets — everything else works without it
 
 ## Quick start
 
@@ -72,7 +72,7 @@ Useful ingest flags:
 
 ## Deliverables
 
-Facts first: git commits made during session windows, session titles, and diff stats are stored at ingest. A local Ollama model (`qwen2.5-coder:7b` by default) then writes 2–4 deliverable bullets per project per day, cached by input hash. "Regenerate" in the day detail marks a digest stale for the next ingest.
+Facts first: git commits made during session windows, session titles, and diff stats are stored at ingest. A local Ollama model (`qwen3:14b` by default) then writes 2–4 deliverable bullets per project per day, cached by input hash. "Regenerate" in the day detail marks a digest stale for the next ingest.
 
 Digest input is only prompts, titles, commit messages, and diff stats — never full transcripts. Ollama is only ever called from `ingest.php`, never from a web request, and if it isn't running, digests are simply skipped.
 

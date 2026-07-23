@@ -11,7 +11,7 @@ class Config
     public int $minBlockSeconds = 60;
     public int $port = 8111;
     public string $ollamaUrl = 'http://localhost:11434';
-    public string $ollamaModel = 'qwen2.5-coder:7b';
+    public string $ollamaModel = 'qwen3:14b';
     public int $digestDays = 14;
 
     public function __construct()
