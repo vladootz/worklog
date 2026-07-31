@@ -82,7 +82,7 @@ Every directory auto-becomes a project named after its basename (shown with an "
 
 ## Export for billing
 
-The Export button produces one JSON time entry per project per day for the current range — description from the digest bullets, optional rounding up to 15/30 min. The format matches the merge-import schema of timester (the author's billing tool), but it's plain JSON that's easy to adapt to your own. **Merge each range only once** — re-imported time entries are not deduped on the timester side.
+The Export button produces one JSON time entry per project per day for the current range — description from the digest bullets, optional rounding up to 15/30 min. The format matches the merge-import schema of timester (the author's billing tool), but it's plain JSON that's easy to adapt to your own. Re-importing a range is safe: timester's merge dedupes time entries by project + start time — unchanged entries are skipped, grown ones (a day re-exported after more work) are updated in place.
 
 ## Configuration
 

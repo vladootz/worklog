@@ -4,8 +4,9 @@
  * Builds a timester DatabaseSchema JSON payload: one TimeEntry per project
  * per day (PLAN.md decision 10). Times are UTC ISO strings exactly like
  * timester's own toISOString() output. Import via timester's MERGE import —
- * its mergeData() dedupes clients/projects/tags by name but NOT timeEntries,
- * so a range must only be merged once.
+ * its mergeData() dedupes clients/projects/tags by name and timeEntries by
+ * projectId + startTime (unchanged skipped, changed updated in place), so
+ * re-merging a range is safe.
  */
 class TimesterExport
 {
