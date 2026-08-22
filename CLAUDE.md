@@ -107,6 +107,19 @@ Under Laravel Herd the repo serves at **https://worklog.test** with no `serve.sh
   `generated` and `cached` will look healthy while most of the work silently timed out.
 - **Do not mark a day stale that has no recorded work.** `dayHasWork()` guards both digest routes — such a
   row can never be satisfied and stays stale forever.
+- **Background digest results must land in place.** `watchDigests()` polls `/api/days` and calls
+  `patchDigests()` → `paintDeliveredCell()`, which rewrites only the Delivered cell and the open
+  detail's `.detail-delivered` block. Calling `load()` there repaints the table and throws away the
+  user's expanded rows, "show more" page and cross-filter mid-generation.
+- **A repaint of the same range must preserve the user's page state.** `renderDays()` compares
+  `currentQueryKey()`; on a match it keeps `shownDays` and the cross-filter and re-opens the detail
+  rows by project+date (`openRowKeys()` / `restoreOpenRows()`), never by index. Only a real range or
+  project-filter change resets them.
+- **Stale is the start of a generation, not the end.** `/api/digest/generate` sets `stale = 1` before
+  the model runs, so a row only leaves `pendingDigests` once it has a digest *and* `stale` is clear —
+  and `markPending()` re-applies the disabled "Generating…" button after any repaint in between.
+  `watchDigests()` stops on the pending rows, not on `last_digest_at`: a pass already in flight when
+  the user clicks ends seconds later and would otherwise cut the watch short.
 - `archive.sh` refuses to build if anything database-like is staged. Keep it that way.
 
 ## Before saying a change is done

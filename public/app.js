@@ -197,12 +197,61 @@ function groupByDate(pairs) {
   return groups;
 }
 
+// A repaint of the same range is a background event (a finished ingest, a returning
+// digest pass) and must not undo what the user has done to the page. A repaint of a
+// *different* range is a new question being asked, so paging and cross-filter reset.
+function currentQueryKey() {
+  return `${state.from}|${state.to}|${state.projects.join(',')}`;
+}
+let lastQueryKey = null;
+
 function renderDays(rows) {
+  const sameQuery = lastQueryKey === currentQueryKey();
+  lastQueryKey = currentQueryKey();
+  const reopen = sameQuery ? openRowKeys() : [];
+  const focusKey = sameQuery ? focusedRowKey() : null;
   allDayRows = rows;
-  shownDays = DAYS_PER_PAGE;
-  // The row set just changed underneath it, so a stale cross-filter would lie.
-  crossFilter = null;
+  if (!sameQuery) {
+    shownDays = DAYS_PER_PAGE;
+    // The row set just changed underneath it, so a stale cross-filter would lie.
+    crossFilter = null;
+  }
   paintDays();
+  restoreOpenRows(reopen);
+  if (focusKey) focusRow(focusKey);
+}
+
+// Expanded rows are identified by project+date, not by index: a repaint can reorder
+// or drop rows, and an index would then re-open the wrong day.
+function openRowKeys() {
+  return [...document.querySelectorAll('#days-table tbody tr.day-row')]
+    .filter(tr => tr.nextElementSibling?.classList.contains('detail'))
+    .map(tr => allDayRows[Number(tr.dataset.i)])
+    .filter(Boolean)
+    .map(rowKey);
+}
+
+function restoreOpenRows(keys) {
+  if (!keys.length) return;
+  const want = new Set(keys);
+  document.querySelectorAll('#days-table tbody tr.day-row').forEach(tr => {
+    const row = allDayRows[Number(tr.dataset.i)];
+    if (row && want.has(rowKey(row))) toggleDetail(tr, row);
+  });
+}
+
+function focusedRowKey() {
+  const tr = document.activeElement?.closest?.('#days-table tbody tr');
+  if (!tr) return null;
+  const host = tr.classList.contains('day-row') ? tr : tr.previousElementSibling;
+  const row = allDayRows[Number(host?.dataset.i)];
+  return row ? rowKey(row) : null;
+}
+
+function focusRow(key) {
+  const tr = [...document.querySelectorAll('#days-table tbody tr.day-row')]
+    .find(t => { const r = allDayRows[Number(t.dataset.i)]; return r && rowKey(r) === key; });
+  tr?.querySelector('button.disclosure')?.focus();
 }
 
 function paintDays() {
@@ -374,14 +423,23 @@ function toggleDetail(tr, row) {
     </div>
     ${row.commits.length ? `<div><h3>Commits</h3><ul>${row.commits.map(c =>
       `<li><code>${c.hash.slice(0, 7)}</code> ${esc(firstLine(c.message))} <span class="muted">+${c.additions ?? 0}/−${c.deletions ?? 0}</span></li>`).join('')}</ul></div>` : ''}
-    <div><h3>Delivered ${row.digest_stale ? '<span class="badge warn">stale</span>' : ''}</h3>
-      ${row.digest ? `<div class="digest">${esc(row.digest)}</div>` : '<span class="muted">No digest yet.</span>'}
-      <p><button type="button" class="regen">${row.digest ? 'Regenerate now' : 'Generate now'}</button></p>
-    </div>
+    <div class="detail-delivered">${deliveredBlock(row)}</div>
   </div></td>`;
   tr.after(detail);
-  detail.querySelector('.regen').addEventListener('click', e =>
-    generateDigest(e.currentTarget, row));
+  bindRegen(detail, row);
+}
+
+// The detail row's Delivered block, rendered on its own so a finished digest can
+// replace just this block without rebuilding — and so collapsing — the whole row.
+function deliveredBlock(row) {
+  return `<h3>Delivered ${row.digest_stale ? '<span class="badge warn">stale</span>' : ''}</h3>
+      ${row.digest ? `<div class="digest">${esc(row.digest)}</div>` : '<span class="muted">No digest yet.</span>'}
+      <p><button type="button" class="regen">${row.digest ? 'Regenerate now' : 'Generate now'}</button></p>`;
+}
+
+function bindRegen(detail, row) {
+  const btn = detail.querySelector('.regen');
+  if (btn) btn.addEventListener('click', e => generateDigest(e.currentTarget, row));
 }
 
 async function generateDigest(btn, row) {
@@ -397,6 +455,7 @@ async function generateDigest(btn, row) {
     if (!res.ok) throw new Error(out.error || `HTTP ${res.status}`);
     btn.textContent = out.queued ? 'Generating…' : 'Already running…';
     announce(`Digest queued for ${row.project} on ${row.date}. It appears when the model finishes.`);
+    pendingDigests.add(rowKey(row));
     watchDigests(await lastDigestAt());
   } catch (e) {
     btn.disabled = false;
@@ -698,16 +757,109 @@ async function refresh() {
   }
 }
 
-// The Ollama digest pass runs in the background after /api/ingest returns; poll its
-// timestamp for a few minutes and reload once it advances so new bullets appear on their own.
+// ---------- digests arriving in the background ----------
+// The Ollama pass runs detached, so its results have to land in a page the user is
+// still using: an expanded day, a "show more" page, a cross-filter. Repainting the
+// whole work log threw all of that away, so nothing here re-renders the table —
+// only the Delivered cell and the open detail block of the days that changed.
+const pendingDigests = new Set();
+let digestWatch = null;
+
+function rowKey(row) { return `${row.project_id}|${row.date}`; }
+
+// Re-read the day rows and copy across only the digest fields. Everything else in
+// allDayRows stays as painted, so indices, grouping and paging cannot shift under
+// the DOM we are about to patch.
+async function patchDigests() {
+  let fresh;
+  try { fresh = await getJSON('/api/days?' + qs()); } catch { return false; }
+  const byKey = new Map(fresh.map(r => [rowKey(r), r]));
+  let changed = 0;
+  allDayRows.forEach((row, i) => {
+    const f = byKey.get(rowKey(row));
+    if (!f) return;
+    const sameDigest = (f.digest ?? null) === (row.digest ?? null);
+    const sameStale = Number(f.digest_stale ?? 0) === Number(row.digest_stale ?? 0);
+    if (sameDigest && sameStale) return;
+    row.digest = f.digest;
+    row.digest_stale = f.digest_stale;
+    // Marking a day stale is the *start* of a generation, not the end: only a day
+    // that carries a digest and is no longer stale has actually been regenerated.
+    if (f.digest && !Number(f.digest_stale ?? 0)) pendingDigests.delete(rowKey(row));
+    changed++;
+    paintDeliveredCell(i);
+  });
+  return changed > 0;
+}
+
+// Repaint one row's Delivered cell (and its detail block, if open) from allDayRows.
+// A row that is currently paged out or filtered away simply has no node — its data
+// is already updated, so the next paintDays() shows it.
+function paintDeliveredCell(i) {
+  const tr = document.querySelector(`#days-table tbody tr.day-row[data-i="${i}"]`);
+  if (!tr) return;
+  const row = allDayRows[i];
+  const cell = tr.querySelector('td[data-label="Delivered"]');
+  if (cell) {
+    const hadFocus = cell.contains(document.activeElement);
+    cell.innerHTML = deliveredCell(row, i);
+    const gen = cell.querySelector('button.gen-digest');
+    if (gen) gen.addEventListener('click', e => { e.stopPropagation(); generateDigest(gen, row); });
+    markPending(cell, row);
+    // The button the user was on may be gone — a digest replaces it with text.
+    // Focus must land somewhere in the same row, never on <body>.
+    if (hadFocus) (gen || tr.querySelector('button.disclosure'))?.focus();
+  }
+  const detail = tr.nextElementSibling;
+  if (!detail || !detail.classList.contains('detail')) return;
+  const host = detail.querySelector('.detail-delivered');
+  if (!host) return;
+  const hadFocus = host.contains(document.activeElement);
+  host.innerHTML = deliveredBlock(row);
+  bindRegen(host, row);
+  markPending(host, row);
+  if (hadFocus) host.querySelector('.regen')?.focus();
+}
+
+// A row can be repainted mid-generation — the day is marked stale before the model
+// runs, so its badge changes while the button must still read "Generating…".
+function markPending(root, row) {
+  if (!pendingDigests.has(rowKey(row))) return;
+  const btn = root.querySelector('.regen, button.gen-digest');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = 'Generating…';
+}
+
+// Poll while the detached pass runs. Each tick patches whatever has landed, so a
+// digest shows up as soon as its own day is written rather than at the end of the run.
+// The stop condition is the rows we are waiting on, not the pass: a pass already in
+// flight when the user clicks finishes almost immediately and would otherwise end the
+// watch before their own day was ever generated.
+const DIGEST_POLL_MS = 10000;
+const DIGEST_POLL_TRIES = 60; // ten minutes — a queued day can sit behind a long backlog
+
 function watchDigests(before) {
+  if (digestWatch) clearInterval(digestWatch);
   let tries = 0;
-  const iv = setInterval(async () => {
-    if (++tries > 20 || (await lastDigestAt()) > before) {
-      clearInterval(iv);
-      if (tries <= 20) { load(); announce('New deliverable summaries are ready.'); }
+  digestWatch = setInterval(async () => {
+    tries++;
+    if (await patchDigests()) announce('New deliverable summaries are ready.');
+    // Rows the user asked for keep the watch alive on their own; with none pending
+    // the watch is only following a background pass, which ends on its timestamp.
+    const done = pendingDigests.size === 0 && (await lastDigestAt()) > before;
+    if (!done && tries < DIGEST_POLL_TRIES) return;
+    clearInterval(digestWatch);
+    digestWatch = null;
+    if (pendingDigests.size) {
+      // Nothing arrived in time — Ollama is down, or the generation failed. Repaint
+      // so those buttons leave the disabled "Generating…" state and can be retried.
+      const stuck = new Set(pendingDigests);
+      pendingDigests.clear();
+      allDayRows.forEach((row, i) => { if (stuck.has(rowKey(row))) paintDeliveredCell(i); });
+      announce('The digest did not arrive. Press generate to try again.');
     }
-  }, 15000);
+  }, DIGEST_POLL_MS);
 }
 
 refreshBtn.addEventListener('click', refresh);
