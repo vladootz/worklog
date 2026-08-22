@@ -45,7 +45,7 @@ bin/worklog          # ingest → serve → open browser → re-ingest every 5 m
 Or run the pieces manually:
 
 ```sh
-php ingest.php                              # incremental ingest + digests (last 14 days)
+php ingest.php                              # incremental ingest + digests (last 30 days)
 php -S localhost:8111 -t public public/index.php   # serve the dashboard
 ```
 
@@ -60,7 +60,8 @@ Useful ingest flags:
 | Flag | Effect |
 | --- | --- |
 | `--skip-digests` | skip Ollama digest generation |
-| `--digest-days N` | digest window (default 14) |
+| `--digest-days N` | digest window (default 30 — matches the dashboard's default range) |
+| | *a run prints `N FAILED` if the model timed out on any day; those retry on the next pass* |
 | `--digest-from YYYY-MM-DD --digest-to YYYY-MM-DD` | backfill digests for a range (months of history on a 7B model takes a while) |
 
 ## How time is computed
@@ -76,6 +77,8 @@ Facts first: git commits made during session windows, session titles, and diff s
 
 Digest input is only prompts, titles, commit messages, and diff stats — never full transcripts. Ollama is only ever called from `ingest.php`, never from a web request, and if it isn't running, digests are simply skipped.
 
+The digest window defaults to 30 days so that every day the dashboard shows by default can have a digest.
+
 ## Projects & mappings
 
 Every directory auto-becomes a project named after its basename (shown with an "unmapped" badge). In ⚙ settings: rename to merge several dirs into one project, assign a client, or ignore throwaway dirs. Ignored projects disappear from all views and exports.
@@ -87,6 +90,15 @@ The Export button produces one JSON time entry per project per day for the curre
 ## Configuration
 
 The defaults live in [`lib/Config.php`](lib/Config.php): port (8111), gap threshold (15 min), Ollama URL/model, digest window, and source paths. Edit them there — there is deliberately no config file format to learn.
+
+## Request safety
+
+The app has no accounts, but it answers on a real hostname under Herd, so every state-changing request
+(`POST /api/*`) is checked for same-origin before the router runs: `Sec-Fetch-Site` must be `same-origin` when
+the browser sends it, and `Origin`, when present, must match the host. A request with neither header is treated
+as a non-browser caller (curl, `bin/worklog`) and allowed. This stops another site in your browser from
+rewriting your project mappings or kicking off ingests; it is **not** authentication. Do not expose this app
+beyond localhost without adding real auth.
 
 ## Privacy & your data
 
