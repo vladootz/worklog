@@ -16,10 +16,10 @@ class Digests
     ) {
     }
 
-    /** @return array{generated:int, cached:int, skipped_ollama_down?:bool} */
+    /** @return array{generated:int, cached:int, failed:int, skipped_ollama_down?:bool} */
     public function run(int $days, ?string $rangeFrom = null, ?string $rangeTo = null): array
     {
-        $stats = ['generated' => 0, 'cached' => 0];
+        $stats = ['generated' => 0, 'cached' => 0, 'failed' => 0];
         if (!$this->ollama->available()) {
             $stats['skipped_ollama_down'] = true;
             return $stats;
@@ -43,22 +43,28 @@ class Digests
         }
 
         foreach ($rows as $row) {
-            if ($row['seconds'] < 300) {
-                continue; // not worth a model call for a sub-5-minute day
-            }
-            $inputs = $this->inputsFor($row);
-            $hash = sha1(json_encode($inputs));
             $existing = $this->db->one(
                 'SELECT inputs_hash, stale FROM digests WHERE project_id = ? AND date = ?',
                 [$row['project_id'], $row['date']]
             );
+            // A sub-5-minute day isn't worth a model call on its own, but an explicit
+            // request overrides that: stale = 1 means someone asked for this exact day.
+            if ($row['seconds'] < 300 && !(int) ($existing['stale'] ?? 0)) {
+                continue;
+            }
+            $inputs = $this->inputsFor($row);
+            $hash = sha1(json_encode($inputs));
             if ($existing !== null && $existing['inputs_hash'] === $hash && !(int) $existing['stale']) {
                 $stats['cached']++;
                 continue;
             }
             $text = $this->ollama->generate($this->prompt($row, $inputs));
             if ($text === null) {
-                continue; // model hiccup — retried next ingest since hash won't match
+                // Counted, not swallowed. These used to vanish silently, so a run could
+                // report "25 generated, 47 cached" while 60 more had timed out.
+                $stats['failed']++;
+                echo "  digest FAILED (model timeout or empty): {$row['date']} {$row['project']}\n";
+                continue; // retried next ingest — the hash still will not match
             }
             $this->db->exec(
                 'INSERT INTO digests (project_id, date, text, model, inputs_hash, stale, generated_at)

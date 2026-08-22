@@ -64,7 +64,8 @@ if (!isset($opts['skip-digests'])) {
     if (isset($dStats['skipped_ollama_down'])) {
         echo "digests: skipped (Ollama not reachable at {$config->ollamaUrl})\n";
     } else {
-        echo "digests: {$dStats['generated']} generated, {$dStats['cached']} cached\n";
+        echo "digests: {$dStats['generated']} generated, {$dStats['cached']} cached"
+            . (($dStats['failed'] ?? 0) > 0 ? ", {$dStats['failed']} FAILED" : '') . "\n";
         settingStamp($db, 'last_digest_at');
     }
     if ($digestLock) {

@@ -12,7 +12,11 @@ class Config
     public int $port = 8111;
     public string $ollamaUrl = 'http://localhost:11434';
     public string $ollamaModel = 'qwen3:14b';
-    public int $digestDays = 14;
+    // Must cover the dashboard's default range (last 30 days), or days 15-30 are
+    // visible with no digest and the UI has nothing to show in "Delivered".
+    // Widening is cheap at rest: Digests::run() hashes each project-day's inputs and
+    // only calls Ollama on a miss, so this costs sha1s per pass, not model calls.
+    public int $digestDays = 30;
 
     public function __construct()
     {

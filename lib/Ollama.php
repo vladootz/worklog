@@ -25,13 +25,19 @@ class Ollama
         $ch = curl_init($this->baseUrl . '/api/generate');
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 120,
+            CURLOPT_TIMEOUT => 180,
             CURLOPT_POST => true,
             CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
             CURLOPT_POSTFIELDS => json_encode([
                 'model' => $this->model,
                 'prompt' => $prompt,
                 'stream' => false,
+                // Reasoning models (qwen3 and friends) otherwise spend most of their
+                // budget on a chain of thought that is then discarded. Measured on
+                // qwen3:14b: 82s / 261 eval tokens with thinking, 3.2s / 27 without —
+                // and the 120s ceiling this replaced was silently killing most digests.
+                // Ignored by models that do not think.
+                'think' => false,
                 'options' => ['temperature' => 0.3],
             ]),
         ]);
