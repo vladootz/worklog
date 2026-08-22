@@ -9,37 +9,53 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to content</a>
+
 <header>
   <h1>ai-worklog</h1>
-  <div class="filters">
-    <div class="presets">
-      <button data-preset="today">Today</button>
-      <button data-preset="week">This week</button>
-      <button data-preset="month">This month</button>
-      <button data-preset="30d" class="active">Last 30 days</button>
+
+  <div class="hdr-groups">
+    <div class="hdr-group hdr-range" role="group" aria-label="Date range">
+      <div class="presets">
+        <button type="button" data-preset="today" aria-pressed="false">Today</button>
+        <button type="button" data-preset="week" aria-pressed="false">This week</button>
+        <button type="button" data-preset="month" aria-pressed="false">This month</button>
+        <button type="button" data-preset="30d" class="active" aria-pressed="true">Last 30 days</button>
+      </div>
+      <div class="date-inputs">
+        <label for="from">From</label><input type="date" id="from">
+        <label for="to">To</label><input type="date" id="to">
+      </div>
     </div>
-    <label>From <input type="date" id="from"></label>
-    <label>To <input type="date" id="to"></label>
-    <details class="project-filter" id="project-filter">
-      <summary>All projects</summary>
-      <div class="project-options" id="project-options"></div>
-    </details>
-    <button id="refresh-btn" title="Re-read the latest Claude Code / opencode session data">Read data</button>
-    <button id="settings-btn" title="Project mappings">&#9881;</button>
-    <button id="export-btn" title="Export to timester">Export</button>
+
+    <div class="hdr-group hdr-scope" role="group" aria-label="Project filter">
+      <details class="project-filter" id="project-filter">
+        <summary aria-expanded="false">All projects</summary>
+        <div class="project-options" id="project-options"></div>
+      </details>
+    </div>
+
+    <div class="hdr-group hdr-actions" role="group" aria-label="Actions">
+      <button type="button" id="refresh-btn" title="Re-read the latest Claude Code / opencode session data">Read data</button>
+      <button type="button" id="export-btn" title="Export to timester">Export</button>
+      <button type="button" id="settings-btn" class="icon-btn" aria-label="Project mappings" title="Project mappings"><span aria-hidden="true">&#9881;</span></button>
+    </div>
   </div>
 </header>
 
-<main>
-  <section class="cards" id="cards"></section>
+<!-- Async progress is announced here: ingest, background digests, mapping saves. -->
+<p id="sr-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
+
+<main id="main">
+  <section class="hero" id="hero"></section>
 
   <section class="chart-section">
     <div class="chart-head">
       <h2>Time per project</h2>
-      <div class="bucket-switch" id="bucket-switch">
-        <button data-bucket="day" class="active">Day</button>
-        <button data-bucket="week">Week</button>
-        <button data-bucket="month">Month</button>
+      <div class="bucket-switch" id="bucket-switch" role="group" aria-label="Chart bucket size">
+        <button type="button" data-bucket="day" class="active" aria-pressed="true">Day</button>
+        <button type="button" data-bucket="week" aria-pressed="false">Week</button>
+        <button type="button" data-bucket="month" aria-pressed="false">Month</button>
       </div>
     </div>
     <div id="chart"></div>
@@ -48,36 +64,55 @@
 
   <section>
     <h2>Work log</h2>
-    <table id="days-table">
-      <thead>
-        <tr><th></th><th>Date</th><th>Project</th><th>Time</th><th>Sessions</th><th>Delivered</th></tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+    <p id="cross-filter" class="cross-filter"></p>
+    <div class="table-scroll">
+      <table id="days-table">
+        <caption class="visually-hidden">Time and deliverables per project per day</caption>
+        <thead>
+          <tr>
+            <th scope="col"><span class="visually-hidden">Show detail</span></th>
+            <th scope="col">Date</th>
+            <th scope="col">Project</th>
+            <th scope="col">Time</th>
+            <th scope="col">Sessions</th>
+            <th scope="col">Delivered</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p id="show-more-host" class="show-more-host"></p>
     <p id="empty" class="empty" hidden>No activity in this range.</p>
   </section>
 </main>
 
-<dialog id="settings-dialog">
-  <h2>Project mappings</h2>
-  <p class="hint">Each directory maps to a project. Rename to merge projects; set a client for timester export; ignore throwaway dirs.</p>
-  <div id="mappings"></div>
-  <div class="dialog-actions"><button id="settings-close">Close</button></div>
+<dialog id="settings-dialog" aria-labelledby="settings-title">
+  <div class="dialog-head">
+    <h2 id="settings-title">Project mappings</h2>
+    <p class="hint">Each directory maps to a project. Rename to merge projects; set a client for timester export; ignore throwaway dirs.</p>
+    <div class="mapping-controls">
+      <label for="mapping-search" class="visually-hidden">Search directory, project or client</label>
+      <input type="search" id="mapping-search" name="mapping-search" placeholder="Search directory, project or client">
+      <label class="inline-check"><input type="checkbox" id="unmapped-only" name="unmapped-only"> Unmapped only</label>
+      <span id="mapping-count" class="muted" role="status" aria-live="polite"></span>
+    </div>
+  </div>
+  <div class="dialog-body" id="mappings"></div>
+  <div class="dialog-actions"><button type="button" id="settings-close">Done</button></div>
 </dialog>
 
-<dialog id="export-dialog">
-  <h2>Export to timester</h2>
+<dialog id="export-dialog" aria-labelledby="export-title">
+  <h2 id="export-title">Export to timester</h2>
   <p class="hint">One entry per project per day, current date range. Merge-import the file in timester (not the destructive import).</p>
-  <label>Rounding
-    <select id="export-rounding">
-      <option value="0">None</option>
-      <option value="15">Up to 15 min</option>
-      <option value="30">Up to 30 min</option>
-    </select>
-  </label>
+  <label for="export-rounding">Rounding</label>
+  <select id="export-rounding">
+    <option value="0">None</option>
+    <option value="15">Up to 15 min</option>
+    <option value="30">Up to 30 min</option>
+  </select>
   <div class="dialog-actions">
-    <button id="export-download">Download JSON</button>
-    <button id="export-close">Close</button>
+    <button type="button" id="export-download">Download JSON</button>
+    <button type="button" id="export-close">Close</button>
   </div>
 </dialog>
 
