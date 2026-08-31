@@ -465,7 +465,7 @@ async function generateDigest(btn, row) {
 }
 
 function renderProjectFilter(projects) {
-  const box = document.getElementById('project-options');
+  const box = document.getElementById('project-checkboxes');
   box.innerHTML = projects.filter(p => !Number(p.ignored)).map(p => `
     <label><input type="checkbox" id="pf-${p.id}" name="pf-${p.id}" value="${p.id}" ${state.projects.includes(p.id) ? 'checked' : ''}> ${esc(p.name)}</label>
   `).join('');
@@ -479,6 +479,39 @@ function renderProjectFilter(projects) {
     load();
   }));
 }
+
+// ---------- quick search on the project filter ----------
+// Typing narrows the checkbox labels client-side; Enter commits to the first
+// visible match. It replaces the selection rather than adding to it: the point
+// of the search is "jump to this project", not "build a set".
+const projectSearch = document.getElementById('project-search');
+const projectSearchEmpty = document.getElementById('project-search-empty');
+
+projectSearch.addEventListener('input', () => {
+  const q = projectSearch.value.trim().toLowerCase();
+  let visible = 0;
+  document.querySelectorAll('#project-checkboxes label').forEach(label => {
+    const hit = !q || label.textContent.trim().toLowerCase().includes(q);
+    label.classList.toggle('is-hidden', !hit);
+    if (hit) visible++;
+  });
+  projectSearchEmpty.hidden = visible > 0;
+});
+
+projectSearch.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const first = document.querySelector('#project-checkboxes label:not(.is-hidden) input');
+  if (!first) return; // no match — leave the current selection untouched
+  const name = first.closest('label').textContent.trim();
+  document.querySelectorAll('#project-checkboxes input').forEach(cb => { cb.checked = cb === first; });
+  state.projects = [Number(first.value)];
+  document.querySelector('#project-filter summary').textContent = '1 project';
+  projectFilter.open = false;
+  projectSummary.focus();
+  announce(`Filtered to ${name}.`);
+  load();
+});
 
 // ---------- data loading ----------
 // First paint shows the shape of the page rather than three empty boxes.
@@ -570,6 +603,12 @@ const projectFilter = document.getElementById('project-filter');
 const projectSummary = projectFilter.querySelector('summary');
 projectFilter.addEventListener('toggle', () => {
   projectSummary.setAttribute('aria-expanded', String(projectFilter.open));
+  if (projectFilter.open) {
+    // Every open starts from the full list, focused on the search.
+    projectSearch.value = '';
+    projectSearch.dispatchEvent(new Event('input'));
+    projectSearch.focus();
+  }
 });
 document.addEventListener('click', e => {
   if (projectFilter.open && !projectFilter.contains(e.target)) projectFilter.open = false;

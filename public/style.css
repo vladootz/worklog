@@ -116,6 +116,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
   padding: 10px; max-height: 320px; overflow-y: auto; min-width: 240px;
 }
 .project-options label { display: flex; gap: 8px; padding: 3px 4px; color: var(--text); }
+.project-options label.is-hidden { display: none; }
+/* Quick filter for the dropdown; sticky so it stays reachable in a long list. */
+#project-search {
+  position: sticky; top: -10px; z-index: 1;
+  width: 100%; margin-bottom: 6px; font: inherit; color: var(--text);
+  background: var(--raised); border: 1px solid var(--line-control);
+  border-radius: var(--radius); padding: 5px 8px;
+}
+#project-search-empty { margin: 4px 4px 0; font-size: 12px; }
 
 /* One dominant figure. The hours are the sentence that explains it, not
    three co-equal cards competing with it. */

@@ -31,7 +31,11 @@
     <div class="hdr-group hdr-scope" role="group" aria-label="Project filter">
       <details class="project-filter" id="project-filter">
         <summary aria-expanded="false">All projects</summary>
-        <div class="project-options" id="project-options"></div>
+        <div class="project-options" id="project-options">
+          <input type="search" id="project-search" name="project-search" placeholder="Filter projects…" aria-label="Filter projects" autocomplete="off">
+          <div id="project-checkboxes"></div>
+          <p id="project-search-empty" class="muted" hidden>No project matches.</p>
+        </div>
       </details>
     </div>
 
