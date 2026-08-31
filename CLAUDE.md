@@ -25,7 +25,7 @@ DOM layer are all hand-rolled on purpose.
 | `lib/TimesterExport.php` | Billing export shaping. |
 | `public/index.php` | Front controller. `/api/*` JSON; `/settings` and `/` serve their HTML; everything else static. |
 | `public/index.html`, `app.js`, `charts.js`, `style.css` | The dashboard UI. |
-| `public/settings.html`, `settings.js` | The `/settings` page: dir → project mappings. Self-contained on purpose (no bundler); re-declares `esc`/`announce`/`getJSON`. |
+| `public/settings.html`, `settings.js` | The `/settings` page: tabbed (one tab today — project mappings), built so a new setting is a new panel. Self-contained on purpose (no bundler); re-declares `esc`/`announce`/`getJSON`. |
 | `ai-worklog.db` | SQLite. Gitignored. Your permanent archive — Claude Code deletes transcripts after `cleanupPeriodDays`. |
 | `_plans/`, `docs/plans/` | Blueprints. Read the newest before starting related work. |
 
