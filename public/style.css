@@ -426,4 +426,24 @@ body.is-refreshing .table-scroll { opacity: .55; transition: opacity 150ms ease-
 .cross-filter button { padding: 3px 10px; font-size: 12px; }
 #chart svg .seg { cursor: pointer; }
 
-.mapping-more { display: block; margin: 12px auto; font-size: 12px; }
+/* ---------- settings page tabs ---------- */
+.tabs {
+  display: flex; gap: 4px; margin: 16px 0 0;
+  border-bottom: 1px solid var(--line);
+}
+.tabs [role="tab"] {
+  background: none; color: var(--text-secondary); font-weight: 500;
+  border: 1px solid transparent; border-bottom: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: 8px 14px; margin-bottom: -1px;
+  position: relative; top: 1px;
+}
+.tabs [role="tab"]:hover { color: var(--text); background: var(--panel-hover); }
+/* Selected = weight + the panel's own surface, not hue (WCAG 1.4.1). */
+.tabs [role="tab"][aria-selected="true"] {
+  color: var(--text); font-weight: 600;
+  background: var(--panel); border-color: var(--line-control);
+}
+.tab-panel { margin-top: 0; }
+.tab-panel .hint { margin: 14px 0 0; }
+.tab-panel .mapping-controls { margin-top: 14px; }

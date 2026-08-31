@@ -19,9 +19,10 @@ async function getJSON(url) {
 }
 
 // ---------- mappings ----------
-const MAPPINGS_PER_PAGE = 40;
+// The full list renders at once — this is a page now, not a dialog, and the
+// search filter is the way around a long list. Revisit only if it ever grows
+// into the thousands.
 let allMappings = [];
-let mappingsShown = MAPPINGS_PER_PAGE;
 
 function filteredMappings() {
   const q = document.getElementById('mapping-search').value.trim().toLowerCase();
@@ -36,7 +37,6 @@ function filteredMappings() {
 // Filters the already-fetched array. It must never issue a request per keystroke.
 function renderMappings() {
   const list = filteredMappings();
-  const visible = list.slice(0, mappingsShown);
   const box = document.getElementById('mappings');
 
   document.getElementById('mapping-count').textContent =
@@ -51,7 +51,7 @@ function renderMappings() {
     <datalist id="project-names">${[...new Set(allMappings.map(m => m.project))]
       .map(n => `<option value="${esc(n)}">`).join('')}</datalist>
     <div class="mapping-row mapping-head"><span>Directory</span><span>Project</span><span>Client</span><span>Ignore</span><span>Status</span></div>
-  ` + visible.map(m => {
+  ` + list.map(m => {
     const i = allMappings.indexOf(m);
     return `
     <div class="mapping-row" data-dir="${esc(m.dir)}">
@@ -67,15 +67,6 @@ function renderMappings() {
       <span class="save-state" role="status" aria-live="polite"></span>
     </div>`;
   }).join('');
-
-  if (list.length > mappingsShown) {
-    const more = document.createElement('button');
-    more.type = 'button';
-    more.className = 'mapping-more';
-    more.textContent = `Show ${Math.min(MAPPINGS_PER_PAGE, list.length - mappingsShown)} more (${list.length - mappingsShown} left)`;
-    more.addEventListener('click', () => { mappingsShown += MAPPINGS_PER_PAGE; renderMappings(); });
-    box.appendChild(more);
-  }
 
   box.querySelectorAll('.mapping-row[data-dir]').forEach(row => {
     const stateEl = row.querySelector('.save-state');
@@ -118,12 +109,41 @@ function renderMappings() {
 }
 
 document.getElementById('mapping-search').addEventListener('input', () => {
-  mappingsShown = MAPPINGS_PER_PAGE;
   renderMappings();
 });
 document.getElementById('unmapped-only').addEventListener('change', () => {
-  mappingsShown = MAPPINGS_PER_PAGE;
   renderMappings();
+});
+
+// ---------- tabs ----------
+// APG tabs: roving tabindex, arrow keys move focus AND activate (one panel each,
+// no lazy content to fetch), selected state carried by aria-selected + weight.
+const tablist = document.querySelector('[role="tablist"]');
+
+function activateTab(tab) {
+  tablist.querySelectorAll('[role="tab"]').forEach(t => {
+    const on = t === tab;
+    t.setAttribute('aria-selected', String(on));
+    t.setAttribute('tabindex', on ? '0' : '-1');
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => {
+    p.hidden = p.id !== tab.getAttribute('aria-controls');
+  });
+  announce(`${tab.textContent} settings.`);
+}
+
+tablist.addEventListener('click', e => {
+  const tab = e.target.closest('[role="tab"]');
+  if (tab) activateTab(tab);
+});
+tablist.addEventListener('keydown', e => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  e.preventDefault();
+  const tabs = [...tablist.querySelectorAll('[role="tab"]')];
+  const i = tabs.indexOf(document.activeElement);
+  if (i < 0) return;
+  const step = e.key === 'ArrowRight' ? 1 : tabs.length - 1;
+  activateTab(tabs[(i + step) % tabs.length]);
 });
 
 (async () => {

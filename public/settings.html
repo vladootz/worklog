@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Project mappings — ai-worklog</title>
+<title>Settings — ai-worklog</title>
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="style.css">
@@ -20,20 +20,27 @@
 
 <main id="main" class="settings-main">
   <div class="page-head">
-    <h1>Project mappings</h1>
+    <h1>Settings</h1>
+  </div>
+
+  <!-- Tabs exist now so the next setting drops in as a panel, not a redesign.
+       One tab is still a real tab: roving tabindex, arrows, aria-selected. -->
+  <div class="tabs" role="tablist" aria-label="Settings sections">
+    <button type="button" id="tab-mappings" role="tab" aria-selected="true" aria-controls="panel-mappings">Project mappings</button>
+  </div>
+
+  <section id="panel-mappings" role="tabpanel" aria-labelledby="tab-mappings" class="tab-panel">
     <p class="hint">Each directory maps to a project. Rename to merge projects; set a client for timester export; ignore throwaway dirs.</p>
-  </div>
-
-  <div class="mapping-controls">
-    <label for="mapping-search" class="visually-hidden">Search directory, project or client</label>
-    <input type="search" id="mapping-search" name="mapping-search" placeholder="Search directory, project or client">
-    <label class="inline-check"><input type="checkbox" id="unmapped-only" name="unmapped-only"> Unmapped only</label>
-    <span id="mapping-count" class="muted" role="status" aria-live="polite"></span>
-  </div>
-
-  <div class="mapping-panel">
-    <div class="mapping-body" id="mappings"></div>
-  </div>
+    <div class="mapping-controls">
+      <label for="mapping-search" class="visually-hidden">Search directory, project or client</label>
+      <input type="search" id="mapping-search" name="mapping-search" placeholder="Search directory, project or client">
+      <label class="inline-check"><input type="checkbox" id="unmapped-only" name="unmapped-only"> Unmapped only</label>
+      <span id="mapping-count" class="muted" role="status" aria-live="polite"></span>
+    </div>
+    <div class="mapping-panel">
+      <div class="mapping-body" id="mappings"></div>
+    </div>
+  </section>
 </main>
 
 <script src="settings.js"></script>
