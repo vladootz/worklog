@@ -18,13 +18,14 @@ DOM layer are all hand-rolled on purpose.
 | `ingest.php` | CLI entry point. Reads sources, writes `ai-worklog.db`, runs digests. **CLI only** — it refuses to run under a web SAPI. |
 | `lib/Config.php` | Every tunable: port, gap threshold, Ollama URL/model, `digestDays`, source paths. There is deliberately no config file format. |
 | `lib/Db.php` | Thin PDO wrapper. `q()` rows, `one()` row, `val()` scalar, `exec()` write — all take bound params. |
-| `lib/Api.php` | All read logic: `summary()`, `days()`, `timeseries()`, `projects()`, plus the interval-union maths. |
+| `lib/Api.php` | All read logic: `summary()`, `days()`, `timeseries()`, `projects()`, `digestsRange()`, plus the interval-union maths. |
 | `lib/ClaudeSource.php`, `lib/OpencodeSource.php`, `lib/GitCommits.php` | Ingest sources. |
 | `lib/Digests.php` | Ollama digest generation, cached by `inputs_hash`. |
 | `lib/Coalesce.php` | Event timestamps → work blocks. |
 | `lib/TimesterExport.php` | Billing export shaping. |
-| `public/index.php` | Front controller. `/api/*` JSON; everything else static. |
-| `public/index.html`, `app.js`, `charts.js`, `style.css` | The whole UI. |
+| `public/index.php` | Front controller. `/api/*` JSON; `/settings` and `/` serve their HTML; everything else static. |
+| `public/index.html`, `app.js`, `charts.js`, `style.css` | The dashboard UI. |
+| `public/settings.html`, `settings.js` | The `/settings` page: dir → project mappings. Self-contained on purpose (no bundler); re-declares `esc`/`announce`/`getJSON`. |
 | `ai-worklog.db` | SQLite. Gitignored. Your permanent archive — Claude Code deletes transcripts after `cleanupPeriodDays`. |
 | `_plans/`, `docs/plans/` | Blueprints. Read the newest before starting related work. |
 
@@ -78,9 +79,10 @@ Under Laravel Herd the repo serves at **https://worklog.test** with no `serve.sh
 - Selection and state must never be conveyed by colour alone — pair it with weight, text or
   strike-through.
 - Everything interactive must be keyboard-operable and carry an accessible name. Announce async
-  work through `announce()`, which writes to the page-level `#sr-status` region. The settings
-  dialog owns a second, dialog-scoped region (`#mapping-count`) plus a `.save-state` per row —
-  scoped regions are fine; a second *page-level* one is not.
+  work through `announce()`, which writes to the page-level `#sr-status` region (one per page:
+  dashboard and `/settings` each own one). The settings page also has a list-scoped region
+  (`#mapping-count`) plus a `.save-state` per row — scoped regions are fine; a second
+  *page-level* one is not.
 - All interpolated API data goes through `esc()` (`app.js`) or `escHtml()` (`charts.js`).
   No inline `on*` attributes, no `eval`.
 - Query params are untrusted: validate, drop what fails, never echo back.
@@ -95,6 +97,13 @@ Under Laravel Herd the repo serves at **https://worklog.test** with no `serve.sh
   `displayedMinutes()` / `fmtMins()`.
 - **A date regex is not a date check.** `/^\d{4}-\d{2}-\d{2}$/` accepts `2026-13-99`. Use
   `validDate()` (`checkdate`) on anything that reaches the DB.
+- **Never override a `<dialog>`'s display when closed.** An author rule like
+  `#foo-dialog { display: flex }` beats the UA's `dialog:not([open]) { display: none }` and the
+  closed dialog renders inline at the page bottom (the settings dialog did exactly that).
+  `dialog:not([open]) { display: none }` is pinned in `style.css` — keep it.
+- **`first_prompt` is truncated to 160 chars in `Api::sessionInfo()`.** It is only the UI's
+  fallback for a missing title, and the UI shows ≤110 chars of that; shipping whole prompts made
+  a 30-day `/api/days` response ~85 KB heavier. Don't "fix" the truncation without a reason.
 - **Session `title` is not a deliverable.** Claude Code seeds it from the first prompt, so it
   often *is* prompt text. `looksLikePrompt()` in `app.js` filters it; commits rank above it.
 - `Config::digestDays` must cover the dashboard's default range (currently both 30), or visible
@@ -107,7 +116,7 @@ Under Laravel Herd the repo serves at **https://worklog.test** with no `serve.sh
   `generated` and `cached` will look healthy while most of the work silently timed out.
 - **Do not mark a day stale that has no recorded work.** `dayHasWork()` guards both digest routes — such a
   row can never be satisfied and stays stale forever.
-- **Background digest results must land in place.** `watchDigests()` polls `/api/days` and calls
+- **Background digest results must land in place.** `watchDigests()` polls `/api/digests` and calls
   `patchDigests()` → `paintDeliveredCell()`, which rewrites only the Delivered cell and the open
   detail's `.detail-delivered` block. Calling `load()` there repaints the table and throws away the
   user's expanded rows, "show more" page and cross-filter mid-generation.
