@@ -683,13 +683,15 @@ let digestWatch = null;
 
 function rowKey(row) { return `${row.project_id}|${row.date}`; }
 
-// Re-read the day rows and copy across only the digest fields. Everything else in
-// allDayRows stays as painted, so indices, grouping and paging cannot shift under
-// the DOM we are about to patch.
+// Re-read only the digest fields for the range — /api/digests returns
+// {project_id, date, text, stale} and nothing else, so a poll tick moves
+// kilobytes instead of the whole day payload. Everything else in allDayRows
+// stays as painted, so indices, grouping and paging cannot shift under the
+// DOM we are about to patch.
 async function patchDigests() {
   let fresh;
-  try { fresh = await getJSON('/api/days?' + qs()); } catch { return false; }
-  const byKey = new Map(fresh.map(r => [rowKey(r), r]));
+  try { fresh = await getJSON('/api/digests?' + qs()); } catch { return false; }
+  const byKey = new Map(fresh.map(r => [`${r.project_id}|${r.date}`, r]));
   let changed = 0;
   allDayRows.forEach((row, i) => {
     const f = byKey.get(rowKey(row));

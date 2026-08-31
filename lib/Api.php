@@ -149,13 +149,47 @@ class Api
         }
         $sessionInfo = $this->sessionInfo($allSessionIds);
         $digests = [];
-        foreach ($this->db->q('SELECT project_id, date, text, stale FROM digests') as $d) {
+        // Bounded to the requested days — the table holds the whole archive.
+        foreach ($this->db->q(
+            'SELECT project_id, date, text, stale FROM digests WHERE date >= ? AND date <= ?',
+            [date('Y-m-d', $from), date('Y-m-d', $to - 1)]
+        ) as $d) {
             $digests[$d['project_id'] . '|' . $d['date']] = $d;
+        }
+        // One query for the whole range instead of one per project-day cell;
+        // the day filter is applied per cell from the grouped result.
+        $commitsByDirDay = [];
+        $allDirs = [];
+        foreach ($sessionInfo as $s) {
+            $allDirs[$s['dir']] = true;
+        }
+        if ($allDirs !== []) {
+            $ph = implode(',', array_fill(0, count($allDirs), '?'));
+            foreach ($this->db->q(
+                "SELECT dir, hash, message, author, committed_at, files, additions, deletions
+                 FROM commits WHERE dir IN ($ph) AND committed_at >= ? AND committed_at < ?
+                 ORDER BY committed_at",
+                [...array_keys($allDirs), $from, $to]
+            ) as $c) {
+                $dir = $c['dir'];
+                unset($c['dir']); // keep the row shape identical to the old per-cell query
+                $commitsByDirDay[$dir][date('Y-m-d', (int) $c['committed_at'])][] = $c;
+            }
         }
         $rows = [];
         foreach ($cells as $key => $c) {
             $sessions = array_values(array_intersect_key($sessionInfo, $c['session_ids']));
-            $commits = $this->commitsFor($c, $sessions);
+            $commits = [];
+            $dirs = [];
+            foreach ($sessions as $s) {
+                $dirs[$s['dir']] = true;
+            }
+            foreach (array_keys($dirs) as $dir) {
+                foreach ($commitsByDirDay[$dir][$c['date']] ?? [] as $c2) {
+                    $commits[] = $c2;
+                }
+            }
+            usort($commits, fn($a, $b) => $a['committed_at'] <=> $b['committed_at']);
             $rows[] = [
                 'date' => $c['date'],
                 'project_id' => $c['project_id'],
@@ -174,20 +208,12 @@ class Api
         return $rows;
     }
 
-    private function commitsFor(array $cell, array $sessions): array
+    /** Digest rows for a day range, for the UI's cheap background poll. */
+    public function digestsRange(int $from, int $to): array
     {
-        $dirs = array_values(array_unique(array_column($sessions, 'dir')));
-        if ($dirs === []) {
-            return [];
-        }
-        $dayStart = strtotime($cell['date'] . ' 00:00:00');
-        $dayEnd = strtotime('+1 day', $dayStart); // DST-safe
-        $ph = implode(',', array_fill(0, count($dirs), '?'));
         return $this->db->q(
-            "SELECT hash, message, author, committed_at, files, additions, deletions
-             FROM commits WHERE dir IN ($ph) AND committed_at >= ? AND committed_at < ?
-             ORDER BY committed_at",
-            [...$dirs, $dayStart, $dayEnd]
+            'SELECT project_id, date, text, stale FROM digests WHERE date >= ? AND date <= ?',
+            [date('Y-m-d', $from), date('Y-m-d', $to - 1)]
         );
     }
 
@@ -206,9 +232,23 @@ class Api
              FROM sessions WHERE id IN ($ph) ORDER BY started_at",
             $ids
         ) as $s) {
+            // first_prompt is only the UI's fallback for a missing title, and the UI
+            // shows at most 110 chars of it — shipping whole prompts in every day row
+            // put ~85 KB of dead weight in a 30-day /api/days response.
+            if ($s['first_prompt'] !== null) {
+                $s['first_prompt'] = self::truncate((string) $s['first_prompt'], 160);
+            }
             $out[(int) $s['id']] = $s;
         }
         return $out;
+    }
+
+    private static function truncate(string $s, int $max): string
+    {
+        if (mb_strlen($s) <= $max) {
+            return $s;
+        }
+        return mb_substr($s, 0, $max);
     }
 
     public function timeseries(int $from, int $to, string $bucket, array $projectIds = []): array
@@ -229,8 +269,10 @@ class Api
             $series[$pid][$bk] = ($series[$pid][$bk] ?? 0) + self::unionSeconds($data['intervals']);
         }
         // A time axis must be continuous: emit every bucket in range, even empty ones.
+        // strtotime('+1 day') rather than += 86400 — on a 25-hour DST day the fixed
+        // step lands on 23:00 of the same date and the day is visited twice.
         $bucketKeys = [];
-        for ($ts = $from; $ts < $to; $ts += 86400) {
+        for ($ts = $from; $ts < $to; $ts = strtotime('+1 day', $ts)) {
             $bucketKeys[self::bucketKey(date('Y-m-d', $ts), $bucket)] = true;
         }
         $bucketKeys = array_keys($bucketKeys);

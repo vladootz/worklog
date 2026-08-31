@@ -176,6 +176,20 @@ try {
             jsonOut($api->projects());
             break;
 
+        // Digest text only, for the UI's background poll. The full /api/days payload
+        // carries sessions, commits and blocks — ~250 KB per tick for a 30-day range.
+        case $uri === '/api/digests':
+            $fromD = (string) ($_GET['from'] ?? '');
+            $toD = (string) ($_GET['to'] ?? '');
+            if (!validDate($fromD) || !validDate($toD) || $fromD > $toD) {
+                jsonOut(['error' => 'valid from and to dates required'], 400);
+                break;
+            }
+            $fromTs = strtotime($fromD . ' 00:00:00');
+            $toTs = strtotime('+1 day', strtotime($toD . ' 00:00:00'));
+            jsonOut($api->digestsRange($fromTs, $toTs));
+            break;
+
         case $uri === '/api/digest/stale' && $_SERVER['REQUEST_METHOD'] === 'POST':
             $body = jsonBody();
             $pid = (int) ($body['project_id'] ?? 0);
