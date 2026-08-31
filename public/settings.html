@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Project mappings — ai-worklog</title>
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header>
+  <a class="brand" href="/">&#8592; ai-worklog</a>
+</header>
+
+<!-- Async work is announced here: mapping saves. -->
+<p id="sr-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
+
+<main id="main" class="settings-main">
+  <div class="page-head">
+    <h1>Project mappings</h1>
+    <p class="hint">Each directory maps to a project. Rename to merge projects; set a client for timester export; ignore throwaway dirs.</p>
+  </div>
+
+  <div class="mapping-controls">
+    <label for="mapping-search" class="visually-hidden">Search directory, project or client</label>
+    <input type="search" id="mapping-search" name="mapping-search" placeholder="Search directory, project or client">
+    <label class="inline-check"><input type="checkbox" id="unmapped-only" name="unmapped-only"> Unmapped only</label>
+    <span id="mapping-count" class="muted" role="status" aria-live="polite"></span>
+  </div>
+
+  <div class="mapping-panel">
+    <div class="mapping-body" id="mappings"></div>
+  </div>
+</main>
+
+<script src="settings.js"></script>
+</body>
+</html>

@@ -16,6 +16,12 @@ if (!str_starts_with($uri, '/api/')) {
         readfile(__DIR__ . '/index.html');
         exit;
     }
+    // Settings is a standalone page, not a dialog on the dashboard.
+    if ($uri === '/settings' || $uri === '/settings.html') {
+        header('Content-Type: text/html; charset=utf-8');
+        readfile(__DIR__ . '/settings.html');
+        exit;
+    }
     http_response_code(404);
     header('Content-Type: text/plain');
     echo 'not found';

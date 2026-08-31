@@ -38,7 +38,7 @@
     <div class="hdr-group hdr-actions" role="group" aria-label="Actions">
       <button type="button" id="refresh-btn" title="Re-read the latest Claude Code / opencode session data">Read data</button>
       <button type="button" id="export-btn" title="Export to timester">Export</button>
-      <button type="button" id="settings-btn" class="icon-btn" aria-label="Project mappings" title="Project mappings"><span aria-hidden="true">&#9881;</span></button>
+      <a href="/settings" id="settings-btn" class="icon-btn" aria-label="Project mappings" title="Project mappings"><span aria-hidden="true">&#9881;</span></a>
     </div>
   </div>
 </header>
@@ -85,21 +85,6 @@
     <p id="empty" class="empty" hidden>No activity in this range.</p>
   </section>
 </main>
-
-<dialog id="settings-dialog" aria-labelledby="settings-title">
-  <div class="dialog-head">
-    <h2 id="settings-title">Project mappings</h2>
-    <p class="hint">Each directory maps to a project. Rename to merge projects; set a client for timester export; ignore throwaway dirs.</p>
-    <div class="mapping-controls">
-      <label for="mapping-search" class="visually-hidden">Search directory, project or client</label>
-      <input type="search" id="mapping-search" name="mapping-search" placeholder="Search directory, project or client">
-      <label class="inline-check"><input type="checkbox" id="unmapped-only" name="unmapped-only"> Unmapped only</label>
-      <span id="mapping-count" class="muted" role="status" aria-live="polite"></span>
-    </div>
-  </div>
-  <div class="dialog-body" id="mappings"></div>
-  <div class="dialog-actions"><button type="button" id="settings-close">Done</button></div>
-</dialog>
 
 <dialog id="export-dialog" aria-labelledby="export-title">
   <h2 id="export-title">Export to timester</h2>
