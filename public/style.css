@@ -2,6 +2,7 @@
    Ratios in comments are contrast against --bg / --panel / --raised,
    measured 2026-08-22. Rationale: _plans/01-ui-foundation.md. */
 :root {
+  color-scheme: dark;                    /* native controls (date picker, checkbox) render dark */
   --bg: #0e0e10;
   --panel: #17171a;
   --panel-hover: #1e1e22;
@@ -36,7 +37,10 @@ body {
   font: 14px/1.5 'Helvetica Neue', Helvetica, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
+  -webkit-font-smoothing: antialiased;
 }
+/* Checkboxes are UI chrome, not data: keep them monochrome. */
+input[type="checkbox"] { accent-color: var(--selected-line); }
 /* Utility: available to screen readers, removed from the visual layout. */
 .visually-hidden {
   position: absolute; width: 1px; height: 1px; margin: -1px;
@@ -264,6 +268,14 @@ a.icon-btn:hover { border-color: var(--text-secondary); background: var(--panel-
 .mapping-panel {
   margin-top: 14px; background: var(--panel); border: 1px solid var(--line);
   border-radius: var(--radius-lg); padding: 10px 20px 16px;
+}
+.mapping-row:not(.mapping-head):hover { background: rgba(255, 255, 255, 0.02); }
+/* The column head follows the list down the page. */
+.mapping-row.mapping-head {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--panel);
+  margin: 0 -20px; padding: 10px 20px 6px;
+  border-bottom: 1px solid var(--line-control);
 }
 .mapping-row {
   display: grid; grid-template-columns: 1fr 170px 130px 56px 120px; gap: 8px;
