@@ -69,6 +69,10 @@ CREATE TABLE IF NOT EXISTS events (
     is_prompt INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (session_id, ts, is_prompt)
 ) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS presence_samples (
+    ts INTEGER PRIMARY KEY,
+    idle INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS commits (
     hash TEXT PRIMARY KEY,
     dir TEXT NOT NULL,

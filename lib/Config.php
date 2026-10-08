@@ -17,6 +17,13 @@ class Config
     // Widening is cheap at rest: Digests::run() hashes each project-day's inputs and
     // only calls Ollama on a miss, so this costs sha1s per pass, not model calls.
     public int $digestDays = 30;
+    // Presence (bin/presence → presence.log): a no-input stretch longer than
+    // presenceIdleMinutes is "away", minus its first presenceIdleMinutes (reading is work).
+    public string $presenceLog;
+    public int $presenceIdleMinutes = 5;
+    // Samples further apart than this mean the sampler was off or the Mac asleep:
+    // presence is unknown there and the plain gap rule applies.
+    public int $presenceMaxSampleGapSeconds = 150;
 
     public function __construct()
     {
@@ -24,6 +31,7 @@ class Config
         $this->claudeProjectsDir = $this->home . '/.claude/projects';
         $this->opencodeDb = $this->home . '/.local/share/opencode/opencode.db';
         $this->dbPath = dirname(__DIR__) . '/ai-worklog.db';
+        $this->presenceLog = dirname(__DIR__) . '/presence.log';
         $this->machine = php_uname('n');
         self::initTimezone();
     }

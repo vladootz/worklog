@@ -10,6 +10,7 @@ require __DIR__ . '/lib/Config.php';
 require __DIR__ . '/lib/Db.php';
 require __DIR__ . '/lib/Coalesce.php';
 require __DIR__ . '/lib/Timeline.php';
+require __DIR__ . '/lib/Presence.php';
 require __DIR__ . '/lib/ClaudeSource.php';
 require __DIR__ . '/lib/OpencodeSource.php';
 require __DIR__ . '/lib/GitCommits.php';
@@ -25,6 +26,16 @@ $db = new Db($config->dbPath);
 $opts = getopt('', ['skip-digests', 'digests-only', 'digest-days:', 'digest-from:', 'digest-to:', 'recoalesce']);
 
 echo "ai-worklog ingest — db: {$config->dbPath}, tz: " . date_default_timezone_get() . "\n";
+
+if (!isset($opts['digests-only'])) {
+    // Before the sources: their blocks are coalesced against presence.
+    $db->pdo->beginTransaction();
+    $pr = Presence::ingestLog($db, $config);
+    $db->pdo->commit();
+    echo $pr['newest'] === null
+        ? "presence: no samples (bin/presence install)\n"
+        : "presence: {$pr['new']} new samples, {$pr['total']} total, newest " . (time() - $pr['newest']) . "s ago\n";
+}
 
 if (isset($opts['recoalesce'])) {
     // Sessions with no events (transcript deleted before events were stored) keep their blocks.
