@@ -42,11 +42,23 @@ class Timeline
         if ($times === []) {
             return;
         }
-        foreach (Coalesce::blocks($times, $this->config->gapMinutes, $this->config->minBlockSeconds) as $b) {
+        $c = $this->config;
+        // No samples for this session (history, sampler off) → the plain gap rule, untouched.
+        $presence = Presence::load($this->db, $c, $times[0], $times[count($times) - 1]);
+        if ($presence->hasSamples()) {
+            $blocks = Coalesce::presenceBlocks($times, $c->gapMinutes, $c->minBlockSeconds, $presence, $c->presenceBridgeMinutes);
+            [$idleMin, $bridgeMin] = [$c->presenceIdleMinutes, $c->presenceBridgeMinutes];
+        } else {
+            $blocks = Coalesce::blocks($times, $c->gapMinutes, $c->minBlockSeconds);
+            [$idleMin, $bridgeMin] = [null, null];
+        }
+        foreach ($blocks as $b) {
             $this->db->exec(
-                'INSERT INTO blocks (session_id, dir, start_at, end_at, event_count, gap_threshold_min)
-                 VALUES (?, ?, ?, ?, ?, ?)',
-                [$sessionId, $dir, $b['start'], $b['end'], $b['count'], $this->config->gapMinutes]
+                'INSERT INTO blocks (session_id, dir, start_at, end_at, event_count, gap_threshold_min,
+                                     kind, idle_threshold_min, bridge_max_min)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [$sessionId, $dir, $b['start'], $b['end'], $b['count'], $c->gapMinutes,
+                 $b['kind'] ?? 'core', $idleMin, $bridgeMin]
             );
         }
     }

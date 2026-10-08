@@ -21,6 +21,8 @@ class Config
     // presenceIdleMinutes is "away", minus its first presenceIdleMinutes (reading is work).
     public string $presenceLog;
     public int $presenceIdleMinutes = 5;
+    // With presence data, a session gap up to this long counts where you were at the keyboard.
+    public int $presenceBridgeMinutes = 60;
     // Samples further apart than this mean the sampler was off or the Mac asleep:
     // presence is unknown there and the plain gap rule applies.
     public int $presenceMaxSampleGapSeconds = 150;
