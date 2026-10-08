@@ -21,9 +21,23 @@ $config = new Config();
 $db = new Db($config->dbPath);
 // --digests-only skips source ingest and runs Ollama digests alone (the web layer's
 // background pass); --skip-digests does the opposite. Neither → full run.
-$opts = getopt('', ['skip-digests', 'digests-only', 'digest-days:', 'digest-from:', 'digest-to:']);
+// --recoalesce only rebuilds every session's blocks from its stored events.
+$opts = getopt('', ['skip-digests', 'digests-only', 'digest-days:', 'digest-from:', 'digest-to:', 'recoalesce']);
 
 echo "ai-worklog ingest — db: {$config->dbPath}, tz: " . date_default_timezone_get() . "\n";
+
+if (isset($opts['recoalesce'])) {
+    // Sessions with no events (transcript deleted before events were stored) keep their blocks.
+    $timeline = new Timeline($db, $config);
+    $db->pdo->beginTransaction();
+    $rows = $db->q('SELECT id, dir FROM sessions WHERE id IN (SELECT DISTINCT session_id FROM events)');
+    foreach ($rows as $s) {
+        $timeline->writeBlocks((int) $s['id'], $s['dir']);
+    }
+    $db->pdo->commit();
+    echo 'recoalesce: rebuilt blocks for ' . count($rows) . " sessions from stored events\n";
+    exit(0);
+}
 
 if (!isset($opts['digests-only'])) {
     // One-time backfill: sessions ingested before the events table existed have
