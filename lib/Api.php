@@ -56,15 +56,25 @@ class Api
 
     /**
      * Blocks in range, clipped, resolved to projects, ignored projects dropped.
+     * 'fill' blocks (gap time credited from presence alone) lose every second in which
+     * another project — ignored ones included — had a 'core' block: your attention was
+     * there, so the gap is not billed twice. Done before the project filter, so a
+     * filtered view still cuts against projects it does not show.
      * @return array<array{project_id:int,project:string,client:?string,auto:int,session_id:int,start:int,end:int}>
      */
     private function blocksInRange(int $from, int $to, array $projectIds = []): array
     {
         $map = $this->dirProjectMap();
         $rows = $this->db->q(
-            'SELECT session_id, dir, start_at, end_at FROM blocks WHERE end_at > ? AND start_at < ?',
+            'SELECT session_id, dir, start_at, end_at, kind FROM blocks WHERE end_at > ? AND start_at < ?',
             [$from, $to]
         );
+        $cores = [];
+        foreach ($rows as $r) {
+            if ($r['kind'] === 'core') {
+                $cores[] = [$map[$r['dir']]['id'] ?? 'dir:' . $r['dir'], (int) $r['start_at'], (int) $r['end_at']];
+            }
+        }
         $out = [];
         foreach ($rows as $r) {
             $p = $map[$r['dir']] ?? null;
@@ -74,15 +84,31 @@ class Api
             if ($projectIds !== [] && !in_array($p['id'], $projectIds, true)) {
                 continue;
             }
-            $out[] = [
-                'project_id' => $p['id'],
-                'project' => $p['name'],
-                'client' => $p['client'],
-                'auto' => $p['auto'],
-                'session_id' => (int) $r['session_id'],
-                'start' => max((int) $r['start_at'], $from),
-                'end' => min((int) $r['end_at'], $to),
-            ];
+            [$start, $end] = [(int) $r['start_at'], (int) $r['end_at']];
+            $pieces = [[$start, $end]];
+            if ($r['kind'] === 'fill') {
+                $cuts = [];
+                foreach ($cores as [$owner, $s, $e]) {
+                    if ($owner !== $p['id'] && $e > $start && $s < $end) {
+                        $cuts[] = [$s, $e];
+                    }
+                }
+                $pieces = Coalesce::subtract($start, $end, self::mergedIntervals($cuts));
+            }
+            foreach ($pieces as [$s, $e]) {
+                if ($e <= $from || $s >= $to) {
+                    continue;
+                }
+                $out[] = [
+                    'project_id' => $p['id'],
+                    'project' => $p['name'],
+                    'client' => $p['client'],
+                    'auto' => $p['auto'],
+                    'session_id' => (int) $r['session_id'],
+                    'start' => max($s, $from),
+                    'end' => min($e, $to),
+                ];
+            }
         }
         return $out;
     }

@@ -31,6 +31,7 @@ if (!str_starts_with($uri, '/api/')) {
 $root = dirname(__DIR__);
 require $root . '/lib/Config.php';
 require $root . '/lib/Db.php';
+require $root . '/lib/Coalesce.php';
 require $root . '/lib/Api.php';
 require $root . '/lib/TimesterExport.php';
 
