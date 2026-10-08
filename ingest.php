@@ -9,6 +9,7 @@ if (PHP_SAPI !== 'cli') {
 require __DIR__ . '/lib/Config.php';
 require __DIR__ . '/lib/Db.php';
 require __DIR__ . '/lib/Coalesce.php';
+require __DIR__ . '/lib/Timeline.php';
 require __DIR__ . '/lib/ClaudeSource.php';
 require __DIR__ . '/lib/OpencodeSource.php';
 require __DIR__ . '/lib/GitCommits.php';
@@ -25,6 +26,15 @@ $opts = getopt('', ['skip-digests', 'digests-only', 'digest-days:', 'digest-from
 echo "ai-worklog ingest — db: {$config->dbPath}, tz: " . date_default_timezone_get() . "\n";
 
 if (!isset($opts['digests-only'])) {
+    // One-time backfill: sessions ingested before the events table existed have
+    // blocks but no events. Forget what was seen so every session re-ingests once.
+    $backfill = $db->val("SELECT value FROM settings WHERE key = 'events_backfilled'") === null;
+    if ($backfill) {
+        $db->exec('DELETE FROM ingest_state');
+        $db->exec("DELETE FROM settings WHERE key = 'opencode_watermark'");
+        echo "events: backfilling — every session re-ingests once\n";
+    }
+
     $db->pdo->beginTransaction();
     $claudeStats = (new ClaudeSource($db, $config))->ingest();
     $db->pdo->commit();
@@ -40,6 +50,9 @@ if (!isset($opts['digests-only'])) {
     $db->pdo->commit();
     echo "git: {$gitStats['commits']} commits upserted across {$gitStats['dirs']} repos\n";
 
+    if ($backfill) {
+        settingStamp($db, 'events_backfilled');
+    }
     settingStamp($db, 'last_ingest_at');
 }
 

@@ -78,6 +78,7 @@ class ClaudeSource
     private function ingestSession(string $uuid, array $files, string $projectDir): void
     {
         $events = [];
+        $prompts = [];
         $cwd = null;
         $title = null;
         $firstPrompt = null;
@@ -96,6 +97,10 @@ class ClaudeSource
                     $ts = strtotime($j['timestamp']);
                     if ($ts !== false) {
                         $events[] = $ts;
+                        // Subagent sidecars hold the agent's own prompts, never the human's.
+                        if ($file === $files[0] && self::isHumanPrompt($j)) {
+                            $prompts[] = $ts;
+                        }
                     }
                 }
                 if ($cwd === null && isset($j['cwd']) && is_string($j['cwd'])) {
@@ -150,20 +155,28 @@ class ClaudeSource
         );
         $sessionId = (int) $this->db->pdo->lastInsertId();
         $this->db->projectIdForDir($dir);
-        $this->insertBlocks($sessionId, $dir, $events);
+        (new Timeline($this->db, $this->config))->store($sessionId, $dir, $events, $prompts);
     }
 
-    private function insertBlocks(int $sessionId, string $dir, array $sortedEvents): void
+    /**
+     * A line the human typed: a user message with text that is not a tool result,
+     * a meta/command line (`isMeta`, leading `<`) or a compaction summary.
+     */
+    private static function isHumanPrompt(array $j): bool
     {
-        if (!class_exists('Coalesce')) {
-            return; // wired in at the coalescing step
+        if (($j['type'] ?? '') !== 'user' || !empty($j['isMeta']) || !empty($j['isCompactSummary'])) {
+            return false;
         }
-        foreach (Coalesce::blocks($sortedEvents, $this->config->gapMinutes, $this->config->minBlockSeconds) as $b) {
-            $this->db->exec(
-                'INSERT INTO blocks (session_id, dir, start_at, end_at, event_count, gap_threshold_min)
-                 VALUES (?, ?, ?, ?, ?, ?)',
-                [$sessionId, $dir, $b['start'], $b['end'], $b['count'], $this->config->gapMinutes]
-            );
+        $content = $j['message']['content'] ?? null;
+        if (is_string($content)) {
+            return $content !== '' && $content[0] !== '<';
         }
+        foreach (is_array($content) ? $content : [] as $part) {
+            $text = $part['text'] ?? null;
+            if (($part['type'] ?? '') === 'text' && is_string($text) && $text !== '' && $text[0] !== '<') {
+                return true;
+            }
+        }
+        return false;
     }
 }

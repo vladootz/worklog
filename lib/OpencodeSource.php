@@ -109,10 +109,18 @@ class OpencodeSource
         }
 
         $events = [];
+        $prompts = [];
         foreach ($ids as $sid) {
-            foreach ($this->srcQuery('SELECT time_created, time_updated FROM message WHERE session_id = ?', [$sid]) as $m) {
+            foreach ($this->srcQuery(
+                "SELECT time_created, time_updated, json_extract(data, '$.role') AS role FROM message WHERE session_id = ?",
+                [$sid]
+            ) as $m) {
                 $events[] = intdiv((int) $m['time_created'], 1000);
                 $events[] = intdiv((int) $m['time_updated'], 1000);
+                // Child sessions are subagents: their user messages come from the agent.
+                if ($sid === $s['id'] && $m['role'] === 'user') {
+                    $prompts[] = intdiv((int) $m['time_created'], 1000);
+                }
             }
         }
         if ($events === []) {
@@ -163,12 +171,6 @@ class OpencodeSource
         );
         $sessionId = (int) $this->db->pdo->lastInsertId();
         $this->db->projectIdForDir($s['directory']);
-        foreach (Coalesce::blocks($events, $this->config->gapMinutes, $this->config->minBlockSeconds) as $b) {
-            $this->db->exec(
-                'INSERT INTO blocks (session_id, dir, start_at, end_at, event_count, gap_threshold_min)
-                 VALUES (?, ?, ?, ?, ?, ?)',
-                [$sessionId, $s['directory'], $b['start'], $b['end'], $b['count'], $this->config->gapMinutes]
-            );
-        }
+        (new Timeline($this->db, $this->config))->store($sessionId, $s['directory'], $events, $prompts);
     }
 }
