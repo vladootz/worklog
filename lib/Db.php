@@ -56,10 +56,19 @@ CREATE TABLE IF NOT EXISTS blocks (
     start_at INTEGER NOT NULL,
     end_at INTEGER NOT NULL,
     event_count INTEGER NOT NULL,
-    gap_threshold_min INTEGER NOT NULL
+    gap_threshold_min INTEGER NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'core',
+    idle_threshold_min INTEGER,
+    bridge_max_min INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_blocks_time ON blocks(start_at);
 CREATE INDEX IF NOT EXISTS idx_blocks_session ON blocks(session_id);
+CREATE TABLE IF NOT EXISTS events (
+    session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    ts INTEGER NOT NULL,
+    is_prompt INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (session_id, ts, is_prompt)
+) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS commits (
     hash TEXT PRIMARY KEY,
     dir TEXT NOT NULL,
@@ -91,6 +100,18 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT
 );
 SQL);
+        // CREATE TABLE IF NOT EXISTS never alters an existing table; add columns
+        // introduced after a DB was first created.
+        $blockCols = array_column($this->q('PRAGMA table_info(blocks)'), 'name');
+        foreach ([
+            'kind' => "TEXT NOT NULL DEFAULT 'core'",
+            'idle_threshold_min' => 'INTEGER',
+            'bridge_max_min' => 'INTEGER',
+        ] as $col => $type) {
+            if (!in_array($col, $blockCols, true)) {
+                $this->pdo->exec("ALTER TABLE blocks ADD COLUMN $col $type");
+            }
+        }
     }
 
     public function q(string $sql, array $params = []): array
