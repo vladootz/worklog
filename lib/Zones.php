@@ -68,7 +68,7 @@ class Zones
     /** First moment after a date: the start of the next one. */
     public function dayEnd(string $date): int
     {
-        return $this->dayStart(self::nextDate($date));
+        return $this->dayStart(self::addDays($date, 1));
     }
 
     /**
@@ -135,9 +135,10 @@ class Zones
         return in_array($tz, DateTimeZone::listIdentifiers(DateTimeZone::ALL_WITH_BC), true);
     }
 
-    private static function nextDate(string $date): string
+    /** Calendar arithmetic on a Y-m-d date, no zone involved. */
+    public static function addDays(string $date, int $days): string
     {
-        return (new DateTimeImmutable($date . ' 12:00:00', new DateTimeZone('UTC')))->modify('+1 day')->format('Y-m-d');
+        return (new DateTimeImmutable($date . ' 12:00:00', new DateTimeZone('UTC')))->modify(sprintf('%+d day', $days))->format('Y-m-d');
     }
 
     /** Index of the last change point at or before $t, or -1. */

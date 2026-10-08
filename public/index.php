@@ -32,6 +32,7 @@ $root = dirname(__DIR__);
 require $root . '/lib/Config.php';
 require $root . '/lib/Db.php';
 require $root . '/lib/Coalesce.php';
+require $root . '/lib/Zones.php';
 require $root . '/lib/Api.php';
 require $root . '/lib/TimesterExport.php';
 
@@ -119,11 +120,10 @@ function validDate(string $d): bool
  */
 function dayHasWork(Api $api, int $projectId, string $date): bool
 {
-    $from = strtotime($date . ' 00:00:00');
-    if ($from === false) {
+    if (!validDate($date)) {
         return false;
     }
-    foreach ($api->days($from, strtotime('+1 day', $from)) as $row) {
+    foreach ($api->days($api->zones()->dayStart($date), $api->zones()->dayEnd($date)) as $row) {
         if ((int) $row['project_id'] === $projectId) {
             return true;
         }
@@ -131,21 +131,17 @@ function dayHasWork(Api $api, int $projectId, string $date): bool
     return false;
 }
 
-function rangeParams(): array
+/** from/to as Y-m-d days where you were; an invalid value falls back to the default range. */
+function rangeParams(Api $api): array
 {
-    $from = $_GET['from'] ?? date('Y-m-d', strtotime('-13 days'));
-    $to = $_GET['to'] ?? date('Y-m-d');
-    $fromTs = strtotime($from . ' 00:00:00');
-    if ($fromTs === false) {
-        $fromTs = strtotime(date('Y-m-d', strtotime('-13 days')) . ' 00:00:00');
-    }
-    $toMid = strtotime($to . ' 00:00:00');
-    if ($toMid === false) {
-        $toMid = strtotime(date('Y-m-d') . ' 00:00:00');
-    }
-    $toTs = strtotime('+1 day', $toMid); // DST-safe next midnight
+    $zones = $api->zones();
+    $today = $zones->dateOf(time());
+    $from = (string) ($_GET['from'] ?? '');
+    $to = (string) ($_GET['to'] ?? '');
+    $from = validDate($from) ? $from : Zones::addDays($today, -13);
+    $to = validDate($to) ? $to : $today;
     $projects = array_filter(array_map('intval', explode(',', $_GET['projects'] ?? '')));
-    return [$fromTs, $toTs, array_values($projects)];
+    return [$zones->dayStart($from), $zones->dayEnd($to), array_values($projects)];
 }
 
 // Every state-changing request passes the CSRF guard before the router sees it, so a
@@ -157,17 +153,17 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 try {
     switch (true) {
         case $uri === '/api/summary':
-            [$from, $to, $pids] = rangeParams();
+            [$from, $to, $pids] = rangeParams($api);
             jsonOut($api->summary($from, $to, $pids));
             break;
 
         case $uri === '/api/days':
-            [$from, $to, $pids] = rangeParams();
+            [$from, $to, $pids] = rangeParams($api);
             jsonOut($api->days($from, $to, $pids));
             break;
 
         case $uri === '/api/timeseries':
-            [$from, $to, $pids] = rangeParams();
+            [$from, $to, $pids] = rangeParams($api);
             $bucket = in_array($_GET['bucket'] ?? 'day', ['day', 'week', 'month'], true)
                 ? ($_GET['bucket'] ?? 'day') : 'day';
             jsonOut($api->timeseries($from, $to, $bucket, $pids));
@@ -186,9 +182,7 @@ try {
                 jsonOut(['error' => 'valid from and to dates required'], 400);
                 break;
             }
-            $fromTs = strtotime($fromD . ' 00:00:00');
-            $toTs = strtotime('+1 day', strtotime($toD . ' 00:00:00'));
-            jsonOut($api->digestsRange($fromTs, $toTs));
+            jsonOut($api->digestsRange($api->zones()->dayStart($fromD), $api->zones()->dayEnd($toD)));
             break;
 
         case $uri === '/api/digest/stale' && $_SERVER['REQUEST_METHOD'] === 'POST':
@@ -300,7 +294,7 @@ try {
             break;
 
         case $uri === '/api/export/timester':
-            [$from, $to, $pids] = rangeParams();
+            [$from, $to, $pids] = rangeParams($api);
             $rounding = in_array((int) ($_GET['rounding'] ?? 0), [0, 15, 30], true) ? (int) ($_GET['rounding'] ?? 0) : 0;
             $payload = (new TimesterExport($api))->build($from, $to, $rounding, $pids);
             $fnFrom = preg_replace('/[^0-9-]/', '', (string) ($_GET['from'] ?? '')) ?: 'export';

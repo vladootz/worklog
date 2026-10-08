@@ -25,17 +25,19 @@ class Digests
             return $stats;
         }
 
-        $from = strtotime(($rangeFrom ?? date('Y-m-d', strtotime("-{$days} days"))) . ' 00:00:00');
-        $to = strtotime('+1 day', strtotime(($rangeTo ?? date('Y-m-d')) . ' 00:00:00'));
+        $zones = $this->api->zones();
+        $today = $zones->dateOf(time());
+        $from = $zones->dayStart($rangeFrom ?? Zones::addDays($today, -$days));
+        $to = $zones->dayEnd($rangeTo ?? $today);
         $rows = $this->api->days($from, $to);
 
         // Also revisit explicitly stale days outside the window.
         foreach ($this->db->q('SELECT project_id, date FROM digests WHERE stale = 1') as $s) {
-            $dayFrom = strtotime($s['date'] . ' 00:00:00');
+            $dayFrom = $zones->dayStart($s['date']);
             if ($dayFrom >= $from && $dayFrom < $to) {
                 continue; // already covered
             }
-            foreach ($this->api->days($dayFrom, strtotime('+1 day', $dayFrom)) as $r) {
+            foreach ($this->api->days($dayFrom, $zones->dayEnd($s['date'])) as $r) {
                 if ($r['project_id'] === (int) $s['project_id']) {
                     $rows[] = $r;
                 }

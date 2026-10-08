@@ -8,10 +8,18 @@
  */
 class Api
 {
+    private ?Zones $zones = null;
+
     public function __construct(
         private Db $db,
         private Config $config,
     ) {
+    }
+
+    /** Every moment → calendar day conversion goes through this (CLAUDE.md invariant 7). */
+    public function zones(): Zones
+    {
+        return $this->zones ??= new Zones($this->db);
     }
 
     /** @return array<string, array{id:int,name:string,client:?string,ignored:int,auto:int}> dir => project */
@@ -158,7 +166,7 @@ class Api
         $blocks = $this->blocksInRange($from, $to, $projectIds);
         $cells = []; // "$pid|$date" => data
         foreach ($blocks as $b) {
-            foreach (self::splitByDay($b['start'], $b['end']) as [$date, $s, $e]) {
+            foreach ($this->zones()->splitByDay($b['start'], $b['end']) as [$date, $s, $e]) {
                 $key = $b['project_id'] . '|' . $date;
                 $cells[$key]['project_id'] = $b['project_id'];
                 $cells[$key]['project'] = $b['project'];
@@ -178,7 +186,7 @@ class Api
         // Bounded to the requested days — the table holds the whole archive.
         foreach ($this->db->q(
             'SELECT project_id, date, text, stale FROM digests WHERE date >= ? AND date <= ?',
-            [date('Y-m-d', $from), date('Y-m-d', $to - 1)]
+            [$this->zones()->dateOf($from), $this->zones()->dateOf($to - 1)]
         ) as $d) {
             $digests[$d['project_id'] . '|' . $d['date']] = $d;
         }
@@ -199,7 +207,7 @@ class Api
             ) as $c) {
                 $dir = $c['dir'];
                 unset($c['dir']); // keep the row shape identical to the old per-cell query
-                $commitsByDirDay[$dir][date('Y-m-d', (int) $c['committed_at'])][] = $c;
+                $commitsByDirDay[$dir][$this->zones()->dateOf((int) $c['committed_at'])][] = $c;
             }
         }
         $rows = [];
@@ -216,6 +224,7 @@ class Api
                 }
             }
             usort($commits, fn($a, $b) => $a['committed_at'] <=> $b['committed_at']);
+            $blocks = self::mergedIntervals($c['intervals']);
             $rows[] = [
                 'date' => $c['date'],
                 'project_id' => $c['project_id'],
@@ -223,7 +232,8 @@ class Api
                 'client' => $c['client'],
                 'auto' => $c['auto'],
                 'seconds' => self::unionSeconds($c['intervals']),
-                'blocks' => self::mergedIntervals($c['intervals']),
+                'blocks' => $blocks,
+                'tz' => $this->zones()->nameAt($blocks[0][0]), // for showing block times as that day's clock
                 'sessions' => $sessions,
                 'commits' => $commits,
                 'digest' => $digests[$key]['text'] ?? null,
@@ -239,7 +249,7 @@ class Api
     {
         return $this->db->q(
             'SELECT project_id, date, text, stale FROM digests WHERE date >= ? AND date <= ?',
-            [date('Y-m-d', $from), date('Y-m-d', $to - 1)]
+            [$this->zones()->dateOf($from), $this->zones()->dateOf($to - 1)]
         );
     }
 
@@ -284,7 +294,7 @@ class Api
         $names = [];
         foreach ($blocks as $b) {
             $names[$b['project_id']] = $b['project'];
-            foreach (self::splitByDay($b['start'], $b['end']) as [$date, $s, $e]) {
+            foreach ($this->zones()->splitByDay($b['start'], $b['end']) as [$date, $s, $e]) {
                 $perDay[$b['project_id'] . '|' . $date]['intervals'][] = [$s, $e];
             }
         }
@@ -295,11 +305,11 @@ class Api
             $series[$pid][$bk] = ($series[$pid][$bk] ?? 0) + self::unionSeconds($data['intervals']);
         }
         // A time axis must be continuous: emit every bucket in range, even empty ones.
-        // strtotime('+1 day') rather than += 86400 — on a 25-hour DST day the fixed
-        // step lands on 23:00 of the same date and the day is visited twice.
+        // Step through dates, not seconds: days are 19–28 h long around DST and travel.
         $bucketKeys = [];
-        for ($ts = $from; $ts < $to; $ts = strtotime('+1 day', $ts)) {
-            $bucketKeys[self::bucketKey(date('Y-m-d', $ts), $bucket)] = true;
+        $last = $this->zones()->dateOf($to - 1);
+        for ($d = $this->zones()->dateOf($from); $d <= $last; $d = Zones::addDays($d, 1)) {
+            $bucketKeys[self::bucketKey($d, $bucket)] = true;
         }
         $bucketKeys = array_keys($bucketKeys);
         sort($bucketKeys);
@@ -319,23 +329,6 @@ class Api
             'month' => date('Y-m', $ts),
             default => $date,
         };
-    }
-
-    /** @return array<array{0:string,1:int,2:int}> [localDate, start, end] pieces */
-    public static function splitByDay(int $start, int $end): array
-    {
-        $out = [];
-        $cur = $start;
-        while ($cur < $end) {
-            $dayEnd = strtotime('+1 day', strtotime(date('Y-m-d', $cur) . ' 00:00:00')); // DST-safe
-            $pieceEnd = min($end, $dayEnd);
-            $out[] = [date('Y-m-d', $cur), $cur, $pieceEnd];
-            $cur = $pieceEnd;
-        }
-        if ($out === [] && $start === $end) {
-            $out[] = [date('Y-m-d', $start), $start, $end];
-        }
-        return $out;
     }
 
     private static function mergedIntervals(array $intervals): array
