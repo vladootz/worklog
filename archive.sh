@@ -26,7 +26,7 @@ mkdir -p "$STAGE" "$ROOT/dist"
 git ls-files -z | tar --null -T - -cf - | tar -xf - -C "$STAGE"
 
 # Belt and braces: refuse to ship anything that looks like personal data.
-leaks=$(find "$STAGE" -name '*.db*' -o -name '.env*' -o -name '*.sqlite*')
+leaks=$(find "$STAGE" -name '*.db*' -o -name '.env*' -o -name '*.sqlite*' -o -name 'presence.log*')
 if [ -n "$leaks" ]; then
     echo "error: refusing to archive — data files found:" >&2
     echo "$leaks" >&2
