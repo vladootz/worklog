@@ -115,7 +115,24 @@ Every directory auto-becomes a project named after its basename (shown with an "
 
 ## Export for billing
 
-The Export button produces one JSON time entry per project per day for the current range — description from the digest bullets, optional rounding up to 15/30 min. The format matches the merge-import schema of timester (the author's billing tool), but it's plain JSON that's easy to adapt to your own. Re-importing a range is safe: timester's merge dedupes time entries by project + start time — unchanged entries are skipped, grown ones (a day re-exported after more work) are updated in place.
+The Export button produces one JSON time entry per project per day for the current range — description from the digest bullets, optional rounding up to 15/30 min. The format matches the merge-import schema of timester (the author's billing tool), but it's plain JSON that's easy to adapt to your own. Use the Export button for days you have not exported yet. Timester matches time entries on project and start time, so a merge skips unchanged entries and updates a day that grew.
+
+### After you rename projects or change clients
+
+A merge cannot follow a rename or a client change. Timester sees a renamed project as a new project and adds its entries next to the old ones. Rebuild instead:
+
+1. In ⚙ settings, rename, merge, ignore or assign clients until the dashboard is right.
+2. In timester, export a backup.
+3. Run `bin/timester-replace` with that backup:
+
+   ```sh
+   bin/timester-replace ~/Downloads/timester-export-2026-10-10_09-00.json
+   ```
+
+4. Read the report. It lists the entries that change, the projects it creates or removes, and the client changes.
+5. In timester, import the file it wrote with the option that replaces all data.
+
+The command replaces every entry tagged `ai-worklog` with a fresh export up to yesterday. It copies all your other entries unchanged and checks this before it writes. A project in timester is a name under a client, so the command matches on both. It never changes the client of a project that holds your own entries, and it never deletes a client. If you edit an `ai-worklog` entry by hand in timester, the next rebuild overwrites that edit.
 
 ## Configuration
 

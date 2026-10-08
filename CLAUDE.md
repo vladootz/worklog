@@ -28,6 +28,7 @@ DOM layer are all hand-rolled on purpose.
 | `bin/presence` | Sampler: `sample` (launchd runs it every 60 s), `install`, `uninstall`, `status`. LaunchAgent label `com.ai-worklog.presence`. |
 | `presence.log` | `<epoch> <idle_seconds> <zone>` per minute (older lines have no zone). Personal data: gitignored, outside `public/`, refused by `archive.sh`. |
 | `lib/TimesterExport.php` | Billing export shaping. |
+| `lib/TimesterReplace.php`, `bin/timester-replace` | Rebuild a timester backup so every `ai-worklog` entry equals a fresh export (after renames/client changes). Reads a backup, writes a new file, never touches timester. |
 | `public/index.php` | Front controller. `/api/*` JSON; `/settings` and `/` serve their HTML; everything else static. |
 | `public/index.html`, `app.js`, `charts.js`, `style.css` | The dashboard UI. |
 | `public/settings.html`, `settings.js` | The `/settings` page: tabbed (one tab today — project mappings), built so a new setting is a new panel. Self-contained on purpose (no bundler); re-declares `esc`/`announce`/`getJSON`. |
@@ -46,6 +47,7 @@ php ingest.php --digest-from 2026-01-01 --digest-to 2026-06-30   # backfill a ra
 php ingest.php --recoalesce                         # rebuild all blocks from stored events, then exit
 bin/presence install | status | uninstall           # keyboard/mouse presence sampler (LaunchAgent)
 php ingest.php --zones                              # print the travel log (zone change points)
+bin/timester-replace <timester-backup.json> [--to YYYY-MM-DD] [--out PATH]   # rebuild for a replace import
 php ingest.php --zone 2026-07-15=Europe/Bucharest   # you were there from that local midnight (repeatable)
 php -S localhost:8111 -t public public/index.php    # serve only
 ```
@@ -156,6 +158,10 @@ Under Laravel Herd the repo serves at **https://worklog.test** with no `serve.sh
 - **Timester matches entries on project + start time.** Re-exporting days that were grouped
   differently (before the `zones` table, exports grouped by the Mac's zone at export time) adds
   entries instead of updating them. To repair a range, replace its ai-worklog entries; never merge over them.
+- **A timester project is a name under a client.** "project management" exists once per client, so
+  `TimesterReplace` matches on name + client — name-only matching put an entry under the wrong
+  client once. An ai-worklog export has the same JSON shape as a timester backup: `bin/timester-replace`
+  refuses input holding only ai-worklog entries, because a replace import of it wipes timester.
 - **opencode can move a session to another directory without bumping `time_updated`**, so the
   watermark never re-ingests it and the old project keeps the time. A full re-ingest (delete
   `ingest_state` rows and the `opencode_watermark` setting) picks it up. Deleting the
