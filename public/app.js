@@ -126,8 +126,18 @@ function fmtMins(mins) {
   if (h === 0 && m === 0) return '0m';
   return ((h ? `${h}h ` : '') + (m ? `${m}m` : '')).trim();
 }
-function fmtTime(epoch) {
-  return new Date(epoch * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+// Block times read on the clock of the place you were that day (row.tz), not this browser's.
+function fmtTime(epoch, tz) {
+  const opts = { hour: '2-digit', minute: '2-digit', hour12: false };
+  try {
+    return new Date(epoch * 1000).toLocaleTimeString([], tz ? { ...opts, timeZone: tz } : opts);
+  } catch { // a zone this browser does not know
+    return new Date(epoch * 1000).toLocaleTimeString([], opts);
+  }
+}
+function zoneNote(tz) {
+  if (!tz || tz === Intl.DateTimeFormat().resolvedOptions().timeZone) return '';
+  return ` <span class="muted">· ${esc(tz.split('/').pop().replace(/_/g, ' '))} time</span>`;
 }
 function esc(s) {
   return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -415,8 +425,8 @@ function toggleDetail(tr, row) {
     if (e.key === 'Escape') { e.stopPropagation(); toggleDetail(tr, row); }
   });
   detail.innerHTML = `<td></td><td colspan="5"><div class="detail-inner">
-    <div><h3>Work blocks</h3>${row.blocks.map(b =>
-      `<span class="block-chip">${fmtTime(b[0])}–${fmtTime(b[1])}</span>`).join('')}
+    <div><h3>Work blocks${zoneNote(row.tz)}</h3>${row.blocks.map(b =>
+      `<span class="block-chip">${fmtTime(b[0], row.tz)}–${fmtTime(b[1], row.tz)}</span>`).join('')}
     </div>
     <div><h3>Sessions</h3><ul>${row.sessions.map(s =>
       `<li>${esc(firstLine(s.title || s.first_prompt || '(untitled)'))} <span class="muted">· ${s.source}${s.cost ? ' · $' + Number(s.cost).toFixed(2) : ''}</span></li>`).join('')}</ul>
