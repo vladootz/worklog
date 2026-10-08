@@ -16,12 +16,16 @@ DOM layer are all hand-rolled on purpose.
 | Path | Role |
 | --- | --- |
 | `ingest.php` | CLI entry point. Reads sources, writes `ai-worklog.db`, runs digests. **CLI only** — it refuses to run under a web SAPI. |
-| `lib/Config.php` | Every tunable: port, gap threshold, Ollama URL/model, `digestDays`, source paths. There is deliberately no config file format. |
+| `lib/Config.php` | Every tunable: port, gap threshold, presence idle/bridge minutes, Ollama URL/model, `digestDays`, source paths. There is deliberately no config file format. |
 | `lib/Db.php` | Thin PDO wrapper. `q()` rows, `one()` row, `val()` scalar, `exec()` write — all take bound params. |
 | `lib/Api.php` | All read logic: `summary()`, `days()`, `timeseries()`, `projects()`, `digestsRange()`, plus the interval-union maths. |
 | `lib/ClaudeSource.php`, `lib/OpencodeSource.php`, `lib/GitCommits.php` | Ingest sources. |
 | `lib/Digests.php` | Ollama digest generation, cached by `inputs_hash`. |
-| `lib/Coalesce.php` | Event timestamps → work blocks. |
+| `lib/Coalesce.php` | Event timestamps → work blocks. `blocks()` is the plain gap rule; `presenceBlocks()` adds `fill` and cuts away time. Pure maths — the web layer loads it too, for `Coalesce::subtract()`. |
+| `lib/Timeline.php` | Writes a session's raw `events` and its blocks. `writeBlocks()` picks the rule: plain when the session has no presence samples, presence otherwise. |
+| `lib/Presence.php` | Reads `presence.log` into `presence_samples` (byte offset in setting `presence_offset`); answers `covered()` and `away()`. |
+| `bin/presence` | Sampler: `sample` (launchd runs it every 60 s), `install`, `uninstall`, `status`. LaunchAgent label `com.ai-worklog.presence`. |
+| `presence.log` | `<epoch> <idle_seconds>` per minute. Personal data: gitignored, outside `public/`, refused by `archive.sh`. |
 | `lib/TimesterExport.php` | Billing export shaping. |
 | `public/index.php` | Front controller. `/api/*` JSON; `/settings` and `/` serve their HTML; everything else static. |
 | `public/index.html`, `app.js`, `charts.js`, `style.css` | The dashboard UI. |
@@ -38,6 +42,8 @@ php ingest.php                                      # incremental ingest + diges
 php ingest.php --skip-digests                       # time stats only, ~8s
 php ingest.php --digests-only                       # Ollama pass only
 php ingest.php --digest-from 2026-01-01 --digest-to 2026-06-30   # backfill a range
+php ingest.php --recoalesce                         # rebuild all blocks from stored events, then exit
+bin/presence install | status | uninstall           # keyboard/mouse presence sampler (LaunchAgent)
 php -S localhost:8111 -t public public/index.php    # serve only
 ```
 
@@ -60,9 +66,12 @@ Under Laravel Herd the repo serves at **https://worklog.test** with no `serve.sh
    constant through `escapeshellarg` — no request value may reach the shell.
 5. **Blocks are the ground truth.** Per-project totals and the wall-clock total are interval
    unions computed at query time, so parallel agent sessions count fully per project and are
-   never double-counted globally. Leverage = project time ÷ wall clock.
-6. **The gap threshold is stored on each block**, so historical numbers never silently change
-   when the default moves.
+   never double-counted globally. Leverage = project time ÷ wall clock. `fill` blocks (gap time
+   credited from presence alone) are cut in `Api::blocksInRange()` wherever another project —
+   ignored ones included — has a `core` block, before the project filter.
+6. **The rule is stored on each block**: `gap_threshold_min` always; `idle_threshold_min` and
+   `bridge_max_min` when the presence rule ran (NULL = plain rule). Historical numbers change only
+   on `--recoalesce` or when a session's source changes.
 7. **Days bucket in the system timezone.** `Config::initTimezone()` deliberately overrides
    php.ini — Homebrew ships UTC and late-night sessions must not land on the wrong billing day.
 8. **Ingestion is idempotent.** Re-runs never double-count. Digests are cached by `inputs_hash`
@@ -129,7 +138,15 @@ Under Laravel Herd the repo serves at **https://worklog.test** with no `serve.sh
   and `markPending()` re-applies the disabled "Generating…" button after any repaint in between.
   `watchDigests()` stops on the pending rows, not on `last_digest_at`: a pass already in flight when
   the user clicks ends seconds later and would otherwise cut the watch short.
-- `archive.sh` refuses to build if anything database-like is staged. Keep it that way.
+- `archive.sh` refuses to build if anything database-like (or `presence.log`) is staged. Keep it that way.
+- **No presence samples → the plain rule, byte for byte.** `Timeline::writeBlocks()` sends such sessions
+  through `Coalesce::blocks()`; `presenceBlocks()` must also equal it when nothing is covered. History
+  from before the sampler was installed depends on this. Away time is cut from `core` too (agent
+  working while you are away does not count) — a decision, not a bug.
+- **opencode can move a session to another directory without bumping `time_updated`**, so the
+  watermark never re-ingests it and the old project keeps the time. A full re-ingest (delete
+  `ingest_state` rows and the `opencode_watermark` setting) picks it up. Deleting the
+  `events_backfilled` setting does both on the next run.
 
 ## Before saying a change is done
 

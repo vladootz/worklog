@@ -63,13 +63,32 @@ Useful ingest flags:
 | `--digest-days N` | digest window (default 30 — matches the dashboard's default range) |
 | | *a run prints `N FAILED` if the model timed out on any day; those retry on the next pass* |
 | `--digest-from YYYY-MM-DD --digest-to YYYY-MM-DD` | backfill digests for a range (months of history on a 7B model takes a while) |
+| `--recoalesce` | rebuild every block from the stored events with the current rule, then exit |
 
 ## How time is computed
 
-- Every message/tool event timestamp from Claude Code JSONL (subagents included) and the opencode DB becomes an event.
-- Events less than **15 minutes apart** merge into one work block. The threshold is stored on each block, so historical numbers never silently change; single-event blocks get a 60-second minimum. Agent runtime counts as work — the agent grinding while you're away is still your project moving.
+- Every message/tool event timestamp from Claude Code JSONL (subagents included) and the opencode DB becomes an event. Ingest keeps each event in the `events` table, with a flag on the prompts you typed.
+- Events less than **15 minutes apart** merge into one work block. The threshold is stored on each block, so historical numbers never silently change; single-event blocks get a 60-second minimum. Without presence data, agent runtime counts as work, also when you are away.
+- With the presence sampler on (next section), your keyboard and mouse input shapes the blocks:
+  - A gap of 15 to 60 minutes counts when your Mac recorded input during the whole gap. For example, you test the site in a browser between two prompts.
+  - Time with no input for more than 5 minutes does not count, also when an agent still works. The first 5 minutes of each idle stretch still count, because reading is work.
+  - Gap time does not count while another project had activity, because your attention was there.
+  - Where there are no samples (before you installed the sampler, or while the Mac was asleep), the plain 15-minute rule applies.
+- `php ingest.php --recoalesce` rebuilds all blocks from the stored events with the current rule. Historical numbers change only when you run it.
 - Blocks are stored per session — the ground truth. Per-project totals and the deduplicated wall-clock total are interval unions computed at query time, so parallel agent sessions are honest per project and never double-counted globally. **Leverage** = project time ÷ wall clock.
 - Days are bucketed in the system timezone (php.ini is deliberately overridden — Homebrew ships UTC, and late-night sessions shouldn't land on the wrong billing day).
+
+## Presence sampler (optional)
+
+The sampler records how many seconds passed since your last keyboard or mouse input, once a minute. A launchd agent runs it, so it works when the dashboard is closed. Each line of `presence.log` holds the Unix time and the idle seconds. The file stays on your Mac.
+
+```sh
+bin/presence install     # start sampling every 60 s, also after login
+bin/presence status      # show if the sampler runs, and the newest samples
+bin/presence uninstall   # stop sampling (presence.log is kept)
+```
+
+The next ingest reads the new lines of `presence.log`. Sessions after the install use the presence rule. Older sessions keep the plain 15-minute rule.
 
 ## Deliverables
 
@@ -89,7 +108,7 @@ The Export button produces one JSON time entry per project per day for the curre
 
 ## Configuration
 
-The defaults live in [`lib/Config.php`](lib/Config.php): port (8111), gap threshold (15 min), Ollama URL/model, digest window, and source paths. Edit them there — there is deliberately no config file format to learn.
+The defaults live in [`lib/Config.php`](lib/Config.php): port (8111), gap threshold (15 min), presence idle time (5 min) and longest presence gap (60 min), Ollama URL/model, digest window, and source paths. Edit them there — there is deliberately no config file format to learn.
 
 ## Request safety
 
@@ -110,11 +129,11 @@ To share the app itself without any of that:
 ./archive.sh         # → dist/ai-worklog-YYYY-MM-DD.zip
 ```
 
-The archive contains only git-tracked files and refuses to build if anything database-like slips in.
+The archive contains only git-tracked files and refuses to build if anything database-like slips in. `presence.log` is gitignored too, and the archive refuses it in the same way.
 
 ## Retention
 
-Claude Code deletes transcripts after `cleanupPeriodDays` (worth raising in `~/.claude/settings.json` — this repo's author uses 365). From the moment something is ingested, `ai-worklog.db` is your permanent archive; ingestion is idempotent, so re-runs never double-count.
+Claude Code deletes transcripts after `cleanupPeriodDays` (worth raising in `~/.claude/settings.json` — this repo's author uses 365). From the moment something is ingested, `ai-worklog.db` is your permanent archive; ingestion is idempotent, so re-runs never double-count. The database also keeps the raw event times, so `--recoalesce` can rebuild blocks after Claude Code has deleted the transcripts.
 
 ## Design notes
 
