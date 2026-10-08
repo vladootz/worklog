@@ -1,0 +1,131 @@
+#!/usr/bin/env php
+<?php
+// Rebuild a timester backup so that its ai-worklog entries, their projects' names and
+// clients match worklog now (after renames, client changes, ignored projects).
+//   bin/timester-replace ~/Downloads/timester-export-….json [--to YYYY-MM-DD] [--out PATH]
+// Reads the backup and never changes it. Writes timester-replace-<date>_<time>.json next
+// to it; import that file in timester with the option that replaces all data.
+
+if (PHP_SAPI !== 'cli') {
+    exit(1);
+}
+
+$root = dirname(__DIR__);
+require $root . '/lib/Config.php';
+require $root . '/lib/Db.php';
+require $root . '/lib/Coalesce.php';
+require $root . '/lib/Zones.php';
+require $root . '/lib/Api.php';
+require $root . '/lib/TimesterExport.php';
+require $root . '/lib/TimesterReplace.php';
+
+function fail(string $message): never
+{
+    fwrite(STDERR, "timester-replace: $message\n");
+    exit(1);
+}
+
+// Parsed by hand: getopt() stops at the first non-option, so "file --to X" would drop --to.
+$usage = 'usage: bin/timester-replace <timester-backup.json> [--to YYYY-MM-DD] [--out PATH]';
+$opts = [];
+$in = null;
+for ($i = 1; $i < $argc; $i++) {
+    if (preg_match('/^--(to|out)(?:=(.*))?$/', $argv[$i], $m)) {
+        $opts[$m[1]] = $m[2] ?? ($argv[++$i] ?? fail($usage));
+    } elseif (str_starts_with($argv[$i], '-') || $in !== null) {
+        fail($usage);
+    } else {
+        $in = $argv[$i];
+    }
+}
+if ($in === null || !is_file($in)) {
+    fail($usage);
+}
+$backup = json_decode((string) file_get_contents($in), true);
+foreach (['clients', 'projects', 'tags', 'timeEntries'] as $key) {
+    if (!is_array($backup[$key] ?? null)) {
+        fail("$in is not a timester backup (no \"$key\" list) — nothing written");
+    }
+}
+// An ai-worklog export has the same shape. Replacing timester with one would delete
+// every entry you made by hand, so a file holding only ai-worklog entries is refused.
+$tagId = array_column($backup['tags'], 'id', 'name')[TimesterReplace::TAG] ?? null;
+$own = array_filter($backup['timeEntries'], fn($e) => !in_array($tagId, $e['tags'] ?? [], true));
+if ($backup['timeEntries'] !== [] && $own === []) {
+    fail("$in holds only ai-worklog entries — that is an ai-worklog export, not a timester backup. Export a backup from timester and pass that — nothing written");
+}
+
+$config = new Config();
+$db = new Db($config->dbPath);
+$api = new Api($db, $config);
+$zones = $api->zones();
+$to = $opts['to'] ?? Zones::addDays($zones->dateOf(time()), -1); // today is not finished
+if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $to, $m) || !checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
+    fail("--to '$to' is not a YYYY-MM-DD date");
+}
+$first = $db->val('SELECT MIN(start_at) FROM blocks');
+if ($first === null) {
+    fail('no tracked time yet — run php ingest.php first');
+}
+$from = $zones->dateOf((int) $first);
+
+$export = (new TimesterExport($api))->build($zones->dayStart($from), $zones->dayEnd($to), 0);
+['db' => $out, 'report' => $r] = TimesterReplace::apply($backup, $export);
+
+// Before writing: nothing outside ai-worklog may change, and ids must stay unique.
+$tag = array_column($out['tags'], 'id', 'name')[TimesterReplace::TAG];
+$untagged = fn(array $d) => sha1(json_encode(array_values(array_filter(
+    $d['timeEntries'],
+    fn($e) => !in_array($tag, $e['tags'] ?? [], true)
+))));
+if ($untagged($backup) !== $untagged($out)) {
+    fail('self-check failed: entries without the ai-worklog tag would change — nothing written');
+}
+$ids = array_column($out['timeEntries'], 'id');
+if (count($ids) !== count(array_unique($ids))) {
+    fail('self-check failed: duplicate entry ids — nothing written');
+}
+
+$out['exportDate'] = gmdate('Y-m-d\TH:i:s.000\Z');
+$path = $opts['out'] ?? dirname((string) realpath($in)) . '/timester-replace-' . date('Y-m-d_H-i') . '.json';
+if (file_exists($path)) {
+    fail("$path already exists — pass --out to choose another file");
+}
+if (file_put_contents($path, json_encode($out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) === false) {
+    fail("could not write $path");
+}
+
+// What actually changes for you: ai-worklog entries keyed project/client + start + end → text.
+$entryKeys = function (array $d): array {
+    $tag = array_column($d['tags'], 'id', 'name')[TimesterReplace::TAG] ?? null;
+    $clients = array_column($d['clients'], 'name', 'id');
+    $label = [];
+    foreach ($d['projects'] as $p) {
+        $label[$p['id']] = $p['name'] . '/' . ($clients[$p['clientId']] ?? '');
+    }
+    $keys = [];
+    foreach ($d['timeEntries'] as $e) {
+        if (in_array($tag, $e['tags'] ?? [], true)) {
+            $keys[($label[$e['projectId']] ?? '?') . '|' . $e['startTime'] . '|' . $e['endTime']] = $e['description'];
+        }
+    }
+    return $keys;
+};
+[$before, $after] = [$entryKeys($backup), $entryKeys($out)];
+
+$h = fn(int $s) => sprintf('%.1f h', $s / 3600);
+$list = fn(array $items) => $items === [] ? 'none' : implode(', ', $items);
+echo "worklog days: $from → $to (dates where you were)\n";
+echo "ai-worklog entries: {$r['removed']} removed ({$h($r['removed_seconds'])}), {$r['added']} added ({$h($r['added_seconds'])})\n";
+$kept = array_intersect_key($after, $before);
+$textOnly = count(array_filter(array_keys($kept), fn($k) => $after[$k] !== $before[$k]));
+echo 'compared with this backup: ' . (count($kept) - $textOnly) . " unchanged, $textOnly with new text only, "
+    . count(array_diff_key($before, $after)) . ' go, ' . count(array_diff_key($after, $before))
+    . " come in (a moved or retimed entry is one of each)\n";
+echo 'other entries: ' . (count($out['timeEntries']) - $r['added']) . " unchanged\n";
+echo "projects created: {$list($r['projects_created'])}\n";
+echo "projects removed (held only ai-worklog time, no longer in worklog): {$list($r['projects_removed'])}\n";
+echo "client changes: {$list($r['client_changes'])}\n";
+echo "clients created: {$list($r['clients_created'])}\n";
+echo "written: $path\n";
+echo "Next: in timester, import this file with the option that replaces all data.\n";

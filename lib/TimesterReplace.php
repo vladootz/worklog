@@ -4,10 +4,13 @@
  * Rebuilds a timester backup so that everything tagged ai-worklog is exactly a fresh
  * export: worklog is the source of truth for those entries, their projects' names and
  * clients. A merge import cannot do this — timester matches entries on project + start
- * time and projects on name, so a renamed project or a regrouped day lands next to the
- * old entries instead of replacing them. Import the result with timester's replace.
+ * time, so a renamed project or a regrouped day lands next to the old entries instead of
+ * replacing them. Import the result with timester's replace.
  *
- * Entries without the ai-worklog tag are copied unchanged. Clients are never removed.
+ * A timester project is a name *under a client* ("project management" exists once per
+ * client), so projects match on name + client. Entries without the ai-worklog tag are
+ * copied unchanged; a project holding such entries never has its client changed, and
+ * clients are never removed.
  */
 class TimesterReplace
 {
@@ -35,7 +38,7 @@ class TimesterReplace
             $db['tags'][] = ['id' => $tag, 'name' => self::TAG];
         }
 
-        // Drop every ai-worklog entry; remember which projects held them.
+        // Drop every ai-worklog entry; remember which projects held them, and which hold yours.
         $heldWorklog = [];
         $kept = [];
         foreach ($db['timeEntries'] as $e) {
@@ -48,26 +51,37 @@ class TimesterReplace
             }
         }
         $db['timeEntries'] = $kept;
+        $holdsOwn = array_flip(array_column($kept, 'projectId'));
 
         $exportClients = array_column($export['clients'], 'name', 'id');
         $projectIdFor = []; // export project id → timester project id
         $inExport = [];
         foreach ($export['projects'] as $p) {
             $clientId = $p['clientId'] !== null ? self::clientId($db, $exportClients[$p['clientId']], $report) : null;
-            $i = self::find($db['projects'], $p['name']);
+            $same = self::named($db['projects'], $p['name']);
+            $i = null;
+            if ($clientId !== null) {
+                $i = self::first($db['projects'], $same, fn($q) => ($q['clientId'] ?? null) === $clientId);
+                // A no-client project that only ever held ai-worklog time takes the client
+                // you have now set in worklog (the "forgot to map the client" case).
+                $i ??= self::first($db['projects'], $same, fn($q) => ($q['clientId'] ?? null) === null && !isset($holdsOwn[$q['id']]));
+                if ($i !== null && ($db['projects'][$i]['clientId'] ?? null) === null) {
+                    $db['projects'][$i]['clientId'] = $clientId;
+                    $report['client_changes'][] = $db['projects'][$i]['name'] . ': (none) → ' . $exportClients[$p['clientId']];
+                }
+            } else {
+                // No client in worklog means "not set there": keep where timester has it —
+                // the project that held this time last run, else one without a client.
+                $i = self::first($db['projects'], $same, fn($q) => isset($heldWorklog[$q['id']]))
+                    ?? self::first($db['projects'], $same, fn($q) => ($q['clientId'] ?? null) === null)
+                    ?? (count($same) === 1 ? $same[0] : null);
+            }
             if ($i === null) {
                 $id = self::nextId($db['projects']);
                 $db['projects'][] = ['id' => $id, 'name' => $p['name'], 'clientId' => $clientId];
                 $report['projects_created'][] = $p['name'] . ($clientId !== null ? ' (' . $exportClients[$p['clientId']] . ')' : '');
             } else {
                 $id = $db['projects'][$i]['id'];
-                $old = $db['projects'][$i]['clientId'] ?? null;
-                // No client in worklog means "not set there", not "remove it here".
-                if ($clientId !== null && $old !== $clientId) {
-                    $db['projects'][$i]['clientId'] = $clientId;
-                    $report['client_changes'][] = $db['projects'][$i]['name'] . ': '
-                        . (self::clientName($db, $old) ?? '(none)') . ' → ' . $exportClients[$p['clientId']];
-                }
             }
             $projectIdFor[$p['id']] = $id;
             $inExport[$id] = true;
@@ -102,16 +116,17 @@ class TimesterReplace
         return ['db' => $db, 'report' => $report];
     }
 
-    /** Index of a project by name: exact first, then case-insensitive. */
-    private static function find(array $projects, string $name): ?int
+    /** Indexes of projects with this name: exact matches, else case-insensitive ones. */
+    private static function named(array $projects, string $name): array
     {
-        foreach ($projects as $i => $p) {
-            if ($p['name'] === $name) {
-                return $i;
-            }
-        }
-        foreach ($projects as $i => $p) {
-            if (mb_strtolower($p['name']) === mb_strtolower($name)) {
+        $exact = array_keys(array_filter($projects, fn($p) => $p['name'] === $name));
+        return $exact !== [] ? $exact : array_keys(array_filter($projects, fn($p) => mb_strtolower($p['name']) === mb_strtolower($name)));
+    }
+
+    private static function first(array $projects, array $indexes, callable $match): ?int
+    {
+        foreach ($indexes as $i) {
+            if ($match($projects[$i])) {
                 return $i;
             }
         }
@@ -131,16 +146,6 @@ class TimesterReplace
         $db['clients'][] = ['id' => $id, 'name' => $name];
         $report['clients_created'][] = $name;
         return $id;
-    }
-
-    private static function clientName(array $db, $id): ?string
-    {
-        foreach ($db['clients'] as $c) {
-            if ($c['id'] === $id) {
-                return $c['name'];
-            }
-        }
-        return null;
     }
 
     private static function nextId(array $rows): int
