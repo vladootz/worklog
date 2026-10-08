@@ -76,11 +76,11 @@ Useful ingest flags:
   - Where there are no samples (before you installed the sampler, or while the Mac was asleep), the plain 15-minute rule applies.
 - `php ingest.php --recoalesce` rebuilds all blocks from the stored events with the current rule. Historical numbers change only when you run it.
 - Blocks are stored per session — the ground truth. Per-project totals and the deduplicated wall-clock total are interval unions computed at query time, so parallel agent sessions are honest per project and never double-counted globally. **Leverage** = project time ÷ wall clock.
-- Days are bucketed in the system timezone (php.ini is deliberately overridden — Homebrew ships UTC, and late-night sessions shouldn't land on the wrong billing day).
+- A moment belongs to the calendar day where you were at that moment. Ingest records your time zone as you travel, so a past day never moves when you export it from another country. Around a flight a day can be shorter or longer than 24 hours, like a daylight-saving day.
 
 ## Presence sampler (optional)
 
-The sampler records how many seconds passed since your last keyboard or mouse input, once a minute. A launchd agent runs it, so it works when the dashboard is closed. Each line of `presence.log` holds the Unix time and the idle seconds. The file stays on your Mac.
+The sampler records how many seconds passed since your last keyboard or mouse input, once a minute. A launchd agent runs it, so it works when the dashboard is closed. Each line of `presence.log` holds the Unix time, the idle seconds and the time zone of the Mac. The file stays on your Mac.
 
 ```sh
 bin/presence install     # start sampling every 60 s, also after login
@@ -89,6 +89,17 @@ bin/presence uninstall   # stop sampling (presence.log is kept)
 ```
 
 The next ingest reads the new lines of `presence.log`. Sessions after the install use the presence rule. Older sessions keep the plain 15-minute rule.
+
+## Travelling
+
+The dashboard keeps a travel log: the time zone you were in, and from when. The presence sampler notes the zone of your Mac every minute, and every ingest notes it too. Your Mac must set its time zone automatically (System Settings → General → Date & Time).
+
+```sh
+php ingest.php --zones                              # show the travel log
+php ingest.php --zone 2026-07-15=Europe/Bucharest   # you were in Bucharest from 15 July, 00:00 local time
+```
+
+You can give `--zone` more than once. Use it to fill in trips from before you installed the sampler, or to correct a wrong entry.
 
 ## Deliverables
 

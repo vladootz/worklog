@@ -23,9 +23,10 @@ DOM layer are all hand-rolled on purpose.
 | `lib/Digests.php` | Ollama digest generation, cached by `inputs_hash`. |
 | `lib/Coalesce.php` | Event timestamps → work blocks. `blocks()` is the plain gap rule; `presenceBlocks()` adds `fill` and cuts away time. Pure maths — the web layer loads it too, for `Coalesce::subtract()`. |
 | `lib/Timeline.php` | Writes a session's raw `events` and its blocks. `writeBlocks()` picks the rule: plain when the session has no presence samples, presence otherwise. |
+| `lib/Zones.php` | Moment → calendar day: the local date in the zone you were in then. Change points in the `zones` table. `Api::zones()` is the only way in. |
 | `lib/Presence.php` | Reads `presence.log` into `presence_samples` (byte offset in setting `presence_offset`); answers `covered()` and `away()`. |
 | `bin/presence` | Sampler: `sample` (launchd runs it every 60 s), `install`, `uninstall`, `status`. LaunchAgent label `com.ai-worklog.presence`. |
-| `presence.log` | `<epoch> <idle_seconds>` per minute. Personal data: gitignored, outside `public/`, refused by `archive.sh`. |
+| `presence.log` | `<epoch> <idle_seconds> <zone>` per minute (older lines have no zone). Personal data: gitignored, outside `public/`, refused by `archive.sh`. |
 | `lib/TimesterExport.php` | Billing export shaping. |
 | `public/index.php` | Front controller. `/api/*` JSON; `/settings` and `/` serve their HTML; everything else static. |
 | `public/index.html`, `app.js`, `charts.js`, `style.css` | The dashboard UI. |
@@ -44,6 +45,8 @@ php ingest.php --digests-only                       # Ollama pass only
 php ingest.php --digest-from 2026-01-01 --digest-to 2026-06-30   # backfill a range
 php ingest.php --recoalesce                         # rebuild all blocks from stored events, then exit
 bin/presence install | status | uninstall           # keyboard/mouse presence sampler (LaunchAgent)
+php ingest.php --zones                              # print the travel log (zone change points)
+php ingest.php --zone 2026-07-15=Europe/Bucharest   # you were there from that local midnight (repeatable)
 php -S localhost:8111 -t public public/index.php    # serve only
 ```
 
@@ -72,8 +75,12 @@ Under Laravel Herd the repo serves at **https://worklog.test** with no `serve.sh
 6. **The rule is stored on each block**: `gap_threshold_min` always; `idle_threshold_min` and
    `bridge_max_min` when the presence rule ran (NULL = plain rule). Historical numbers change only
    on `--recoalesce` or when a session's source changes.
-7. **Days bucket in the system timezone.** `Config::initTimezone()` deliberately overrides
-   php.ini — Homebrew ships UTC and late-night sessions must not land on the wrong billing day.
+7. **Days bucket in the zone you were in at that moment, never where the Mac is now.**
+   `Zones` (via `Api::zones()`) maps every moment to a date from the `zones` table: change points
+   recorded by `bin/presence` every minute and by every ingest (`Config::systemZone()`), or set
+   with `--zone`. Never call `date()`/`strtotime()` on a block, commit or range epoch — a past
+   day, and its Timester start time, must not move when you travel. `Config::initTimezone()`
+   still overrides php.ini (Homebrew ships UTC) for logs and the empty-table fallback.
 8. **Ingestion is idempotent.** Re-runs never double-count. Digests are cached by `inputs_hash`
    and only regenerate when inputs change or the row is marked stale.
 
@@ -143,6 +150,12 @@ Under Laravel Herd the repo serves at **https://worklog.test** with no `serve.sh
   through `Coalesce::blocks()`; `presenceBlocks()` must also equal it when nothing is covered. History
   from before the sampler was installed depends on this. Away time is cut from `core` too (agent
   working while you are away does not count) — a decision, not a bug.
+- **A day is 19–28 h long around travel and DST.** Step through dates with `Zones::addDays()`,
+  never `+= 86400`. Flying west, `Zones::record()` keeps the old zone until the new zone's date
+  catches up, so dates never run backwards.
+- **Timester matches entries on project + start time.** Re-exporting days that were grouped
+  differently (before the `zones` table, exports grouped by the Mac's zone at export time) adds
+  entries instead of updating them. To repair a range, replace its ai-worklog entries; never merge over them.
 - **opencode can move a session to another directory without bumping `time_updated`**, so the
   watermark never re-ingests it and the old project keeps the time. A full re-ingest (delete
   `ingest_state` rows and the `opencode_watermark` setting) picks it up. Deleting the
