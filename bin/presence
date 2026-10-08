@@ -1,7 +1,7 @@
 #!/bin/bash
 # Presence sampler: logs keyboard/mouse idle seconds once a minute, so ingest can
 # tell "away from the Mac" from "working outside the agent". Stays on this machine.
-#   bin/presence sample      append "<epoch> <idle_seconds>" to presence.log (launchd runs this)
+#   bin/presence sample      append "<epoch> <idle_seconds> <zone>" to presence.log (launchd runs this)
 #   bin/presence install     load a LaunchAgent that samples every 60 s, also after login
 #   bin/presence uninstall   unload and remove the LaunchAgent (presence.log is kept)
 #   bin/presence status      show whether it is loaded and the newest samples
@@ -16,7 +16,9 @@ case "${1:-}" in
 sample)
     ns=$(/usr/sbin/ioreg -c IOHIDSystem | /usr/bin/awk '/HIDIdleTime/ {print $NF; exit}')
     case "$ns" in '' | *[!0-9]*) exit 1 ;; esac
-    echo "$(/bin/date +%s) $((ns / 1000000000))" >> "$LOG"
+    tz=$(/usr/bin/readlink /etc/localtime)
+    tz=${tz#*zoneinfo/}
+    echo "$(/bin/date +%s) $((ns / 1000000000))${tz:+ $tz}" >> "$LOG"
     ;;
 install)
     mkdir -p "$(dirname "$PLIST")"

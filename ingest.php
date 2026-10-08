@@ -11,6 +11,7 @@ require __DIR__ . '/lib/Db.php';
 require __DIR__ . '/lib/Coalesce.php';
 require __DIR__ . '/lib/Timeline.php';
 require __DIR__ . '/lib/Presence.php';
+require __DIR__ . '/lib/Zones.php';
 require __DIR__ . '/lib/ClaudeSource.php';
 require __DIR__ . '/lib/OpencodeSource.php';
 require __DIR__ . '/lib/GitCommits.php';
@@ -23,14 +24,42 @@ $db = new Db($config->dbPath);
 // --digests-only skips source ingest and runs Ollama digests alone (the web layer's
 // background pass); --skip-digests does the opposite. Neither → full run.
 // --recoalesce only rebuilds every session's blocks from its stored events.
-$opts = getopt('', ['skip-digests', 'digests-only', 'digest-days:', 'digest-from:', 'digest-to:', 'recoalesce']);
+// --zone 2026-07-15=Europe/Bucharest (repeatable) records that you were there from that
+// local midnight on; --zones prints the travel log. Both exit without ingesting.
+$opts = getopt('', ['skip-digests', 'digests-only', 'digest-days:', 'digest-from:', 'digest-to:', 'recoalesce', 'zone:', 'zones']);
 
 echo "ai-worklog ingest — db: {$config->dbPath}, tz: " . date_default_timezone_get() . "\n";
+
+if (isset($opts['zone']) || isset($opts['zones'])) {
+    $set = (array) ($opts['zone'] ?? []);
+    foreach ($set as $arg) { // validate all before writing any
+        if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})=(.+)$/', $arg, $m)
+            || !checkdate((int) $m[2], (int) $m[3], (int) $m[1]) || !Zones::valid($m[4])) {
+            fwrite(STDERR, "invalid --zone '$arg' — expected YYYY-MM-DD=Area/City, e.g. 2026-07-15=Europe/Bucharest\n");
+            exit(1);
+        }
+    }
+    foreach ($set as $arg) {
+        [$date, $tz] = explode('=', $arg, 2);
+        Zones::setFrom($db, $date, $tz);
+    }
+    $rows = $db->q('SELECT since, tz FROM zones ORDER BY since');
+    foreach ($rows as $r) {
+        $local = (new DateTimeImmutable('@' . $r['since']))->setTimezone(new DateTimeZone($r['tz']));
+        echo $local->format('Y-m-d H:i') . '  ' . $r['tz'] . "\n";
+    }
+    echo $rows === [] ? "zones: nothing recorded yet — days use the system zone\n" : '';
+    exit(0);
+}
 
 if (!isset($opts['digests-only'])) {
     // Before the sources: their blocks are coalesced against presence.
     $db->pdo->beginTransaction();
     $pr = Presence::ingestLog($db, $config);
+    $sys = Config::systemZone(); // where the Mac is now, for when the sampler is not installed
+    if ($sys !== null) {
+        Zones::record($db, time(), $sys);
+    }
     $db->pdo->commit();
     echo $pr['newest'] === null
         ? "presence: no samples (bin/presence install)\n"

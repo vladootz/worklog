@@ -104,7 +104,7 @@ class Presence
 
     /**
      * Copy complete new lines of presence.log into presence_samples, from the byte
-     * offset the last run stopped at. A shorter file than that offset was replaced
+     * offset the last run stopped at; a zone column feeds Zones::record(). A shorter file than that offset was replaced
      * or truncated, so it is read from the start (re-inserts are ignored).
      * @return array{new:int, total:int, newest:?int}
      */
@@ -120,14 +120,20 @@ class Presence
             fseek($handle, $offset);
             $insert = $db->pdo->prepare('INSERT OR IGNORE INTO presence_samples (ts, idle) VALUES (?, ?)');
             $new = 0;
+            $lastZone = null;
             while (($line = fgets($handle)) !== false) {
                 if (!str_ends_with($line, "\n")) {
                     break; // the sampler is mid-write; this line is read next run
                 }
                 $offset += strlen($line);
-                if (preg_match('/^(\d+) (\d+)$/', rtrim($line), $m)) {
+                // "<epoch> <idle>" or, since the sampler logs the zone, "<epoch> <idle> <Area/City>".
+                if (preg_match('/^(\d+) (\d+)(?: (\S+))?$/', rtrim($line), $m)) {
                     $insert->execute([(int) $m[1], (int) $m[2]]);
                     $new += $insert->rowCount();
+                    if (isset($m[3]) && $m[3] !== $lastZone) {
+                        Zones::record($db, (int) $m[1], $m[3]);
+                        $lastZone = $m[3];
+                    }
                 }
             }
             fclose($handle);

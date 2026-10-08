@@ -73,13 +73,20 @@ class Config
     {
         // The system timezone must win over php.ini (Homebrew ships UTC),
         // otherwise late-night sessions land on the wrong billing day.
-        $link = @readlink('/etc/localtime');
-        if ($link !== false && preg_match('#zoneinfo/(.+)$#', $link, $m)) {
-            date_default_timezone_set($m[1]);
+        $zone = self::systemZone();
+        if ($zone !== null) {
+            date_default_timezone_set($zone);
             return;
         }
         if (!ini_get('date.timezone')) {
             date_default_timezone_set('UTC');
         }
+    }
+
+    /** The Mac's current zone (e.g. "Asia/Tokyo"), or null when it cannot be read. */
+    public static function systemZone(): ?string
+    {
+        $link = @readlink('/etc/localtime');
+        return $link !== false && preg_match('#zoneinfo/(.+)$#', $link, $m) ? $m[1] : null;
     }
 }
