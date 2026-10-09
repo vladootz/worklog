@@ -121,6 +121,31 @@ class Api
         return $out;
     }
 
+    /**
+     * Projects worked on in fixed windows ending today (where you are now), for the
+     * landing page. Independent of the dashboard's range and project filter.
+     * A month is 30 days, matching the "Last 30 days" preset.
+     */
+    public function windows(): array
+    {
+        $today = $this->zones()->dateOf(time());
+        $out = [];
+        foreach (['week' => 7, 'month' => 30, '3m' => 91, '6m' => 182, '1y' => 365, '2y' => 730] as $key => $days) {
+            $from = Zones::addDays($today, 1 - $days);
+            $s = $this->summary($this->zones()->dayStart($from), $this->zones()->dayEnd($today));
+            $out[] = [
+                'key' => $key,
+                'from' => $from,
+                'to' => $today,
+                'projects' => array_map(
+                    fn($p) => ['name' => $p['name'], 'client' => $p['client'], 'seconds' => $p['seconds']],
+                    $s['projects']
+                ),
+            ];
+        }
+        return $out;
+    }
+
     public function summary(int $from, int $to, array $projectIds = []): array
     {
         $blocks = $this->blocksInRange($from, $to, $projectIds);

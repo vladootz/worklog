@@ -173,6 +173,10 @@ try {
             jsonOut($api->projects());
             break;
 
+        case $uri === '/api/windows':
+            jsonOut($api->windows());
+            break;
+
         // Digest text only, for the UI's background poll. The full /api/days payload
         // carries sessions, commits and blocks — ~250 KB per tick for a 30-day range.
         case $uri === '/api/digests':
