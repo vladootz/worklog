@@ -27,7 +27,7 @@ DOM layer are all hand-rolled on purpose.
 | `lib/Presence.php` | Reads `presence.log` into `presence_samples` (byte offset in setting `presence_offset`); answers `covered()` and `away()`. |
 | `bin/presence` | Sampler: `sample` (launchd runs it every 60 s), `install`, `uninstall`, `status`. LaunchAgent label `com.ai-worklog.presence`. |
 | `presence.log` | `<epoch> <idle_seconds> <zone>` per minute (older lines have no zone). Personal data: gitignored, outside `public/`, refused by `archive.sh`. |
-| `lib/TimesterExport.php` | Billing export shaping. |
+| `lib/TimesterExport.php` | Timester sync file: one entry per merged work block, real start/end, `tz` = zone at block start, the day's digest as description. `sync()` = first day → today + `source: "ai-worklog"`/`through`; `/api/export/timester` always returns it. |
 | `lib/TimesterReplace.php`, `bin/timester-replace` | Rebuild a timester backup so every `ai-worklog` entry equals a fresh export (after renames/client changes). Reads a backup, writes a new file, never touches timester. |
 | `public/index.php` | Front controller. `/api/*` JSON; `/settings` and `/` serve their HTML; everything else static. |
 | `public/index.html`, `app.js`, `charts.js`, `style.css` | The dashboard UI. |
@@ -159,9 +159,11 @@ Under Laravel Herd the repo serves at **https://worklog.test** with no `serve.sh
 - **A day is 19–28 h long around travel and DST.** Step through dates with `Zones::addDays()`,
   never `+= 86400`. Flying west, `Zones::record()` keeps the old zone until the new zone's date
   catches up, so dates never run backwards.
-- **Timester matches entries on project + start time.** Re-exporting days that were grouped
-  differently (before the `zones` table, exports grouped by the Mac's zone at export time) adds
-  entries instead of updating them. To repair a range, replace its ai-worklog entries; never merge over them.
+- **The export is a sync file, never a merge file.** Timester's "Sync from ai-worklog" (in
+  ~/projects/timester, `src/utils/worklogSync.ts`) replaces every `ai-worklog` entry with it, using
+  the same rules as `TimesterReplace`; keep the two in step. It must stay the whole history: a
+  range would delete the days outside it. Timester's merge and replace refuse files carrying
+  `source: "ai-worklog"`.
 - **A timester project is a name under a client.** "project management" exists once per client, so
   `TimesterReplace` matches on name + client — name-only matching put an entry under the wrong
   client once. An ai-worklog export has the same JSON shape as a timester backup: `bin/timester-replace`

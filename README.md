@@ -16,7 +16,7 @@ Zero dependencies by design: **PHP 8.2 + SQLite + vanilla JS/CSS/SVG.** No Compo
 - **Projects & clients** — directories auto-become projects; merge, rename, assign clients, or ignore them from the ⚙ settings panel
 - **Hand-rolled SVG charts** — stacked per-project bars by day/week/month, date presets, project filters
 - **Projects worked on** — next to the leverage figure, the projects and hours for the past week, month, 3 months, 6 months, year and 2 years; open a row for the full list with clients
-- **Billing export** — one JSON entry per project per day, with optional 15/30-min rounding
+- **Billing export** — your whole history as one entry per work block, with real start and end times and the time zone where you worked, ready for timester's one-step sync
 - **Deterministic and explainable** — every rule (gap threshold, dedup, rounding) is simple enough to defend on an invoice
 
 ## Requirements
@@ -116,11 +116,19 @@ Every directory auto-becomes a project named after its basename (shown with an "
 
 ## Export for billing
 
-The Export button produces one JSON time entry per project per day for the current range — description from the digest bullets, optional rounding up to 15/30 min. The format matches the merge-import schema of timester (the author's billing tool), but it's plain JSON that's easy to adapt to your own. Use the Export button for days you have not exported yet. Timester matches time entries on project and start time, so a merge skips unchanged entries and updates a day that grew.
+The Export button downloads your whole tracked history, whatever range the dashboard shows. Each work block becomes one time entry with its real start and end time, the time zone where you worked, and that day's digest as its description. The file uses the schema of timester (the author's billing tool) with a `source: "ai-worklog"` marker. It is plain JSON that is easy to adapt to your own tool.
 
-### After you rename projects or change clients
+To bring it into timester:
 
-A merge cannot follow a rename or a client change. Timester sees a renamed project as a new project and adds its entries next to the old ones. Rebuild instead:
+1. In ai-worklog, click **Export**, then **Download JSON**.
+2. In timester, click **Import** and select the file. Timester picks **Sync from ai-worklog** by itself.
+3. Read the preview, then click **Sync**.
+
+The sync replaces every entry tagged `ai-worklog` and never touches the entries you made in timester. Renamed projects, client changes and ignored projects follow on their own. Never import this file with Merge: timester refuses it, because a merge would add a second copy of every entry.
+
+### Fallback: rebuild a timester backup
+
+Use `bin/timester-replace` only with a timester version that has no Sync option. It applies the same rules to a backup file:
 
 1. In ⚙ settings, rename, merge, ignore or assign clients until the dashboard is right.
 2. In timester, export a backup.
@@ -133,7 +141,7 @@ A merge cannot follow a rename or a client change. Timester sees a renamed proje
 4. Read the report. It lists the entries that change, the projects it creates or removes, and the client changes.
 5. In timester, import the file it wrote with the option that replaces all data.
 
-The command replaces every entry tagged `ai-worklog` with a fresh export up to yesterday. It copies all your other entries unchanged and checks this before it writes. A project in timester is a name under a client, so the command matches on both. It never changes the client of a project that holds your own entries, and it never deletes a client. If you edit an `ai-worklog` entry by hand in timester, the next rebuild overwrites that edit.
+The command replaces every entry tagged `ai-worklog` with a fresh export up to yesterday, in the same format as the Export button. It copies all your other entries unchanged and checks this before it writes. A project in timester is a name under a client, so the command matches on both. It never changes the client of a project that holds your own entries, and it never deletes a client. If you edit an `ai-worklog` entry by hand in timester, the next rebuild overwrites that edit.
 
 ## Configuration
 
