@@ -121,6 +121,13 @@ class Api
         return $out;
     }
 
+    /** First date with tracked time (where you were), or null when nothing is tracked. */
+    public function firstDay(): ?string
+    {
+        $first = $this->db->val('SELECT MIN(start_at) FROM blocks');
+        return $first === null ? null : $this->zones()->dateOf((int) $first);
+    }
+
     /**
      * Projects worked on in fixed windows ending today (where you are now), for the
      * landing page. Independent of the dashboard's range and project filter.

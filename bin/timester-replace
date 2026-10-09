@@ -63,13 +63,9 @@ $to = $opts['to'] ?? Zones::addDays($zones->dateOf(time()), -1); // today is not
 if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $to, $m) || !checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
     fail("--to '$to' is not a YYYY-MM-DD date");
 }
-$first = $db->val('SELECT MIN(start_at) FROM blocks');
-if ($first === null) {
-    fail('no tracked time yet — run php ingest.php first');
-}
-$from = $zones->dateOf((int) $first);
+$from = $api->firstDay() ?? fail('no tracked time yet — run php ingest.php first');
 
-$export = (new TimesterExport($api))->build($zones->dayStart($from), $zones->dayEnd($to), 0);
+$export = (new TimesterExport($api))->build($zones->dayStart($from), $zones->dayEnd($to));
 ['db' => $out, 'report' => $r] = TimesterReplace::apply($backup, $export);
 
 // Before writing: nothing outside ai-worklog may change, and ids must stay unique.

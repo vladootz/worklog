@@ -1,29 +1,43 @@
 <?php
 
 /**
- * Builds a timester DatabaseSchema JSON payload: one TimeEntry per project
- * per day (PLAN.md decision 10). Times are UTC ISO strings exactly like
- * timester's own toISOString() output. Import via timester's MERGE import —
- * its mergeData() dedupes clients/projects/tags by name and timeEntries by
- * projectId + startTime (unchanged skipped, changed updated in place), so
- * re-merging a range is safe.
+ * Builds the timester payload: its DatabaseSchema with one TimeEntry per work block
+ * (true start and end, UTC ISO strings like timester's own toISOString()), each
+ * carrying `tz`, the zone where the work happened. Every block of a project-day gets
+ * that day's digest as its description.
+ *
+ * sync() is the whole history plus a `source` marker: timester's "Sync from
+ * ai-worklog" import replaces every ai-worklog entry with it, so renames, client
+ * changes and ignored projects follow. Never send a range there — days outside it
+ * would be deleted.
  */
 class TimesterExport
 {
+    public const SOURCE = 'ai-worklog';
+
     public function __construct(
         private Api $api,
     ) {
     }
 
-    public function build(int $from, int $to, int $roundingMinutes, array $projectIds = []): array
+    /** Everything tracked, through today (dates where you were). */
+    public function sync(): array
     {
-        $rows = $this->api->days($from, $to, $projectIds); // ignored projects already excluded
+        $zones = $this->api->zones();
+        $today = $zones->dateOf(time());
+        $first = $this->api->firstDay() ?? $today;
+        return ['source' => self::SOURCE, 'through' => $today]
+            + $this->build($zones->dayStart($first), $zones->dayEnd($today));
+    }
+
+    public function build(int $from, int $to): array
+    {
+        $rows = $this->api->days($from, $to); // ignored projects already excluded
 
         $clients = [];
         $clientIds = []; // name => id
         $projects = [];
         $entries = [];
-        $entryId = 1;
 
         foreach ($rows as $row) {
             $clientId = null;
@@ -42,20 +56,25 @@ class TimesterExport
                 ];
             }
 
-            $seconds = $row['seconds'];
-            if ($roundingMinutes > 0) {
-                $seconds = (int) (ceil($seconds / ($roundingMinutes * 60)) * $roundingMinutes * 60);
+            // Blocks are the project's merged intervals for that day: they never overlap
+            // each other, and their durations add up to the day's seconds.
+            $description = $this->description($row);
+            foreach ($row['blocks'] as [$start, $end]) {
+                $entries[] = [
+                    'startTime' => self::iso($start),
+                    'endTime' => self::iso($end),
+                    'description' => $description,
+                    'projectId' => $row['project_id'],
+                    'tags' => [1],
+                    'tz' => $this->api->zones()->nameAt($start),
+                ];
             }
-            $start = $row['blocks'][0][0];
-            $entries[] = [
-                'id' => $entryId++,
-                'startTime' => self::iso($start),
-                'endTime' => self::iso($start + $seconds),
-                'description' => $this->description($row),
-                'projectId' => $row['project_id'],
-                'tags' => [1],
-            ];
         }
+        usort($entries, fn($a, $b) => strcmp($a['startTime'], $b['startTime']) ?: $a['projectId'] <=> $b['projectId']);
+        foreach ($entries as $i => &$e) {
+            $e = ['id' => $i + 1] + $e;
+        }
+        unset($e);
 
         return [
             'clients' => $clients,

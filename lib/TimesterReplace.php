@@ -95,8 +95,7 @@ class TimesterReplace
                 'description' => $e['description'],
                 'projectId' => $projectIdFor[$e['projectId']],
                 'tags' => [$tag],
-                'id' => $nextEntry++,
-            ];
+            ] + (isset($e['tz']) ? ['tz' => $e['tz']] : []) + ['id' => $nextEntry++];
             $report['added']++;
             $report['added_seconds'] += self::seconds($e);
         }

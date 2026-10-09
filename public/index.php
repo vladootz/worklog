@@ -297,13 +297,11 @@ try {
             jsonOut(['ok' => true, 'project_id' => $pid]);
             break;
 
+        // Always the whole history, whatever the dashboard shows: timester's sync import
+        // replaces every ai-worklog entry with this file.
         case $uri === '/api/export/timester':
-            [$from, $to, $pids] = rangeParams($api);
-            $rounding = in_array((int) ($_GET['rounding'] ?? 0), [0, 15, 30], true) ? (int) ($_GET['rounding'] ?? 0) : 0;
-            $payload = (new TimesterExport($api))->build($from, $to, $rounding, $pids);
-            $fnFrom = preg_replace('/[^0-9-]/', '', (string) ($_GET['from'] ?? '')) ?: 'export';
-            $fnTo = preg_replace('/[^0-9-]/', '', (string) ($_GET['to'] ?? ''));
-            header('Content-Disposition: attachment; filename="worklog-' . $fnFrom . '_' . $fnTo . '.json"');
+            $payload = (new TimesterExport($api))->sync();
+            header('Content-Disposition: attachment; filename="worklog-sync-' . $payload['through'] . '.json"');
             jsonOut($payload);
             break;
 

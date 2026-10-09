@@ -675,17 +675,12 @@ document.addEventListener('keydown', e => {
 
 // ---------- timester export ----------
 const exportDialog = document.getElementById('export-dialog');
-document.getElementById('export-btn').addEventListener('click', () => {
-  const scope = state.projects.length ? `${state.projects.length} filtered project(s)` : 'all projects';
-  exportDialog.querySelector('.hint').textContent =
-    `One entry per project per day, ${state.from} → ${state.to}, ${scope}. Use timester's MERGE import — ` +
-    `and merge each range only once: timester does not dedupe re-imported entries.`;
-  exportDialog.showModal();
-});
+// The file is always the whole history, not the range on screen: timester's sync
+// import replaces every ai-worklog entry with it.
+document.getElementById('export-btn').addEventListener('click', () => exportDialog.showModal());
 document.getElementById('export-close').addEventListener('click', () => exportDialog.close());
 document.getElementById('export-download').addEventListener('click', () => {
-  const rounding = document.getElementById('export-rounding').value;
-  window.location.href = '/api/export/timester?' + qs() + '&rounding=' + rounding;
+  window.location.href = '/api/export/timester';
 });
 
 // ---------- read data (ingest on demand) ----------

@@ -99,13 +99,7 @@
 
 <dialog id="export-dialog" aria-labelledby="export-title">
   <h2 id="export-title">Export to timester</h2>
-  <p class="hint">One entry per project per day, current date range. Merge-import the file in timester (not the destructive import).</p>
-  <label for="export-rounding">Rounding</label>
-  <select id="export-rounding">
-    <option value="0">None</option>
-    <option value="15">Up to 15 min</option>
-    <option value="30">Up to 30 min</option>
-  </select>
+  <p class="hint">Your whole history, one entry per work block, in the time zone where you worked. In timester, import it with <strong>Sync from ai-worklog</strong>: it replaces only the ai-worklog entries. Never use Merge with this file.</p>
   <div class="dialog-actions">
     <button type="button" id="export-download">Download JSON</button>
     <button type="button" id="export-close">Close</button>
