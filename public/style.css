@@ -157,6 +157,59 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .hero-range { color: var(--text-muted); }
 .hero-top { margin-top: 10px; color: var(--text-muted); font-size: 13px; }
 
+/* Leverage and the fixed-window overview share a row at equal height; they stack
+   below 900px. An opened window list scrolls inside a fixed height, so a 120-project
+   list cannot stretch both cards down the page. */
+.overview {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px; margin-bottom: 24px;
+}
+.overview .hero { margin-bottom: 0; }
+.overview:has(.window[open]) .hero { align-self: start; } /* don't stretch into a tall empty card */
+.windows {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius-lg); padding: 18px 20px 10px;
+}
+.windows h2 { margin-bottom: 6px; }
+.window-head, .window > summary {
+  display: grid; grid-template-columns: 7.5em 3.5ch 6.5em minmax(0, 1fr) 1em;
+  gap: 10px; align-items: baseline;
+}
+.window-head {
+  padding: 0 6px 4px; color: var(--text-muted); font-size: 11px;
+  text-transform: uppercase; letter-spacing: .08em;
+}
+.window > summary {
+  list-style: none; cursor: pointer; padding: 7px 6px;
+  border-top: 1px solid var(--line); border-radius: var(--radius);
+}
+.window > summary::-webkit-details-marker { display: none; }
+.window > summary:hover { background: var(--panel-hover); }
+/* Open state is the chevron plus weight, never colour alone. */
+.window > summary::after { content: '▸'; color: var(--text-secondary); }
+.window[open] > summary::after { content: '▾'; }
+.window[open] .window-label { font-weight: 600; }
+.window-count, .window-hours {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right;
+}
+.window-top { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.window-range { margin: 2px 6px 6px; font-size: 12px; }
+.window-projects {
+  list-style: none; margin: 0 0 10px; padding: 0 6px; font-size: 13px;
+  max-height: 14rem; overflow-y: auto;
+}
+.window-projects:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.window-projects li {
+  display: flex; justify-content: space-between; gap: 12px; padding: 3px 0;
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 640px) {
+  /* No room for the names beside the figures: they drop to a second line. */
+  .window-head, .window > summary { grid-template-columns: minmax(0, 1fr) 3.5ch 6.5em 1em; }
+  .window-head .window-top { display: none; }
+  .window > summary .window-top { grid-column: 1 / -1; grid-row: 2; white-space: normal; }
+}
+
 .chart-section {
   background: var(--panel); border: 1px solid var(--line);
   border-radius: var(--radius-lg); padding: 16px; margin-bottom: 24px;
@@ -334,6 +387,7 @@ body.is-refreshing .table-scroll { opacity: .55; transition: opacity 150ms ease-
   /* Vertical rules read as noise once the groups wrap onto separate lines. */
   .hdr-group + .hdr-group { padding-left: 0; margin-left: 0; border-left: 0; }
   .hero { padding: 20px; }
+  .overview { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 640px) {

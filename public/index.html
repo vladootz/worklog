@@ -51,7 +51,14 @@
 <p id="sr-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
 
 <main id="main">
-  <section class="hero" id="hero"></section>
+  <div class="overview">
+    <section class="hero" id="hero"></section>
+    <!-- Fixed windows ending today; ignores the range and project filter above. -->
+    <section class="windows" aria-labelledby="windows-title">
+      <h2 id="windows-title">Projects worked on</h2>
+      <div id="windows-list"></div>
+    </section>
+  </div>
 
   <section class="chart-section">
     <div class="chart-head">
