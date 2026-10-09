@@ -15,6 +15,7 @@ Zero dependencies by design: **PHP 8.2 + SQLite + vanilla JS/CSS/SVG.** No Compo
 - **Deliverables, not vibes** — git commits and diff stats captured per session window, summarized into 2–4 bullets per project per day by a local Ollama model
 - **Projects & clients** — directories auto-become projects; merge, rename, assign clients, or ignore them from the ⚙ settings panel
 - **Hand-rolled SVG charts** — stacked per-project bars by day/week/month, date presets, project filters
+- **Projects worked on** — next to the leverage figure, the projects and hours for the past week, month, 3 months, 6 months, year and 2 years; open a row for the full list with clients
 - **Billing export** — one JSON entry per project per day, with optional 15/30-min rounding
 - **Deterministic and explainable** — every rule (gap threshold, dedup, rounding) is simple enough to defend on an invoice
 

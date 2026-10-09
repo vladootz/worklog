@@ -18,7 +18,7 @@ DOM layer are all hand-rolled on purpose.
 | `ingest.php` | CLI entry point. Reads sources, writes `ai-worklog.db`, runs digests. **CLI only** — it refuses to run under a web SAPI. |
 | `lib/Config.php` | Every tunable: port, gap threshold, presence idle/bridge minutes, Ollama URL/model, `digestDays`, source paths. There is deliberately no config file format. |
 | `lib/Db.php` | Thin PDO wrapper. `q()` rows, `one()` row, `val()` scalar, `exec()` write — all take bound params. |
-| `lib/Api.php` | All read logic: `summary()`, `days()`, `timeseries()`, `projects()`, `digestsRange()`, plus the interval-union maths. |
+| `lib/Api.php` | All read logic: `summary()`, `days()`, `timeseries()`, `projects()`, `digestsRange()`, `windows()` (projects per fixed window ending today), plus the interval-union maths. |
 | `lib/ClaudeSource.php`, `lib/OpencodeSource.php`, `lib/GitCommits.php` | Ingest sources. |
 | `lib/Digests.php` | Ollama digest generation, cached by `inputs_hash`. |
 | `lib/Coalesce.php` | Event timestamps → work blocks. `blocks()` is the plain gap rule; `presenceBlocks()` adds `fill` and cuts away time. Pure maths — the web layer loads it too, for `Coalesce::subtract()`. |
@@ -138,6 +138,10 @@ Under Laravel Herd the repo serves at **https://worklog.test** with no `serve.sh
   `patchDigests()` → `paintDeliveredCell()`, which rewrites only the Delivered cell and the open
   detail's `.detail-delivered` block. Calling `load()` there repaints the table and throws away the
   user's expanded rows, "show more" page and cross-filter mid-generation.
+- **The "Projects worked on" panel ignores the range and project filter.** `loadWindows()` runs at
+  start and in `reloadAll()` only; `renderWindows()` re-opens the lists that were open. Its month
+  row is 30 days (the "Last 30 days" preset), and the hero's project time sums displayed
+  per-project minutes so the two figures agree side by side.
 - **A repaint of the same range must preserve the user's page state.** `renderDays()` compares
   `currentQueryKey()`; on a match it keeps `shownDays` and the cross-filter and re-opens the detail
   rows by project+date (`openRowKeys()` / `restoreOpenRows()`), never by index. Only a real range or
