@@ -164,13 +164,16 @@ async function getJSON(url) {
 // are the sentence that explains it rather than three co-equal cards.
 function renderHero(sum) {
   const n = sum.projects.length;
+  // Sum of the per-project figures as displayed, so it equals the "Past month" row
+  // beside it rather than drifting a minute or two from rounding once.
+  const projectMins = sum.projects.reduce((a, p) => a + displayedMinutes(p.seconds), 0);
   document.getElementById('hero').innerHTML = `
     <p class="hero-figure">
       <span class="hero-value">${esc(sum.leverage)}×</span>
       <span class="hero-label">Leverage</span>
     </p>
     <p class="hero-sentence">
-      <strong>${esc(fmtDur(sum.total_project_seconds))}</strong> of project time compressed into
+      <strong>${esc(fmtMins(projectMins))}</strong> of project time compressed into
       <strong>${esc(fmtDur(sum.wall_clock_seconds))}</strong> of wall clock<br>
       across <strong>${n}</strong> ${n === 1 ? 'project' : 'projects'}
       <span class="hero-range">· ${esc(rangeLabel())}</span>
@@ -183,6 +186,47 @@ function rangeLabel() {
 }
 function topProjects(projects) {
   return projects.slice(0, 3).map(p => p.name).join(', ') || '—';
+}
+
+// Fixed windows ending today, beside the leverage card. They ignore the range and
+// project filter, so they load at start and after a re-read only — never on a
+// filter change, which would also close a list the user had opened.
+const WINDOW_LABELS = {
+  week: 'Past week', month: 'Past month', '3m': 'Past 3 months',
+  '6m': 'Past 6 months', '1y': 'Past year', '2y': 'Past 2 years',
+};
+async function loadWindows() {
+  try {
+    renderWindows(await getJSON('/api/windows'));
+  } catch (e) {
+    document.getElementById('windows-list').innerHTML =
+      `<p class="muted">Could not load: ${esc(e.message || e)}</p>`;
+  }
+}
+function renderWindows(windows) {
+  const list = document.getElementById('windows-list');
+  const open = new Set([...list.querySelectorAll('details[open]')].map(d => d.dataset.key));
+  list.innerHTML = `<div class="window-head" aria-hidden="true">
+      <span>Window</span><span class="window-count">Proj.</span><span class="window-hours">Time</span>
+      <span class="window-top">Most time</span><span></span>
+    </div>` + windows.map(w => {
+    const n = w.projects.length;
+    const mins = w.projects.map(p => displayedMinutes(p.seconds));
+    const total = mins.reduce((a, b) => a + b, 0); // the row total is the sum of the list below it
+    const items = w.projects.map((p, i) => `<li>
+        <span>${esc(p.name)}${p.client ? ` <span class="muted">· ${esc(p.client)}</span>` : ''}</span>
+        <span class="window-hours">${esc(fmtMins(mins[i]))}</span></li>`).join('');
+    return `<details class="window" data-key="${esc(w.key)}"${open.has(w.key) ? ' open' : ''}>
+      <summary>
+        <span class="window-label">${esc(WINDOW_LABELS[w.key] || w.key)}</span>
+        <span class="window-count">${n}<span class="visually-hidden"> ${n === 1 ? 'project' : 'projects'},</span></span>
+        <span class="window-hours">${esc(fmtMins(total))}</span>
+        <span class="window-top">${esc(topProjects(w.projects))}</span>
+      </summary>
+      <p class="window-range muted">${esc(w.from)} → ${esc(w.to)}</p>
+      <ul class="window-projects" tabindex="0" aria-label="${esc(WINDOW_LABELS[w.key] || w.key)}: projects and time">${items || '<li class="muted">No tracked work</li>'}</ul>
+    </details>`;
+  }).join('');
 }
 
 // The work log is grouped by day and revealed a page at a time: 136 flat rows
@@ -528,6 +572,8 @@ projectSearch.addEventListener('keydown', e => {
 function renderSkeleton() {
   document.getElementById('hero').innerHTML =
     '<div class="sk sk-figure"></div><div class="sk sk-line"></div><div class="sk sk-line short"></div>';
+  document.getElementById('windows-list').innerHTML =
+    Array.from({ length: 6 }, () => '<div class="sk sk-line"></div>').join('');
   document.getElementById('chart').innerHTML = '<div class="sk sk-chart"></div>';
   document.querySelector('#days-table tbody').innerHTML = Array.from({ length: 6 }, () =>
     '<tr><td colspan="6"><div class="sk sk-row"></div></td></tr>').join('');
@@ -648,7 +694,7 @@ const refreshBtn = document.getElementById('refresh-btn');
 let refreshing = false;
 
 async function reloadAll() {
-  await Promise.all([loadProjects(), load()]);
+  await Promise.all([loadProjects(), load(), loadWindows()]);
 }
 async function lastDigestAt() {
   try { return (await getJSON('/api/status')).last_digest_at || 0; }
@@ -807,6 +853,7 @@ if (state.bucket !== 'day') {
 renderSkeleton();
 loadProjects();
 load();
+loadWindows();
 (async () => {
   try {
     const s = await getJSON('/api/status');
