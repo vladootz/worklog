@@ -20,13 +20,39 @@ require __DIR__ . '/lib/Ollama.php';
 require __DIR__ . '/lib/Digests.php';
 
 $config = new Config();
-$db = new Db($config->dbPath);
 // --digests-only skips source ingest and runs Ollama digests alone (the web layer's
 // background pass); --skip-digests does the opposite. Neither → full run.
 // --recoalesce only rebuilds every session's blocks from its stored events.
 // --zone 2026-07-15=Europe/Bucharest (repeatable) records that you were there from that
 // local midnight on; --zones prints the travel log. Both exit without ingesting.
-$opts = getopt('', ['skip-digests', 'digests-only', 'digest-days:', 'digest-from:', 'digest-to:', 'recoalesce', 'zone:', 'zones']);
+// One table drives getopt(), checkArgs() and --help, so the three cannot drift.
+$options = [ // name => [value placeholder, or null for a plain flag; help line]
+    'skip-digests' => [null, 'read the data, write no digests'],
+    'digests-only' => [null, 'write the digests, read no data'],
+    'digest-days' => ['N', "write digests for the last N days (default {$config->digestDays})"],
+    'digest-from' => ['YYYY-MM-DD', 'write digests from this day on, not the last N days'],
+    'digest-to' => ['YYYY-MM-DD', 'write digests up to this day (default today)'],
+    'recoalesce' => [null, 'rebuild all blocks from the stored events, then exit'],
+    'zone' => ['YYYY-MM-DD=Area/City', 'you were there from that local midnight on, then exit'],
+    'zones' => [null, 'print the travel log, then exit'],
+];
+$usage = 'usage: php ingest.php [option]...';
+$args = array_slice($argv, 1);
+if (array_intersect($args, ['-h', '--help']) !== []) {
+    echo "$usage\n\n"
+        . "Reads Claude Code and opencode sessions, git commits and presence.log into\n"
+        . "ai-worklog.db. Then a local Ollama model writes the deliverable digests for the\n"
+        . "last {$config->digestDays} days. With no option, one run does both.\n\n";
+    foreach ($options as $name => [$value, $line]) {
+        printf("  %-28s %s\n", "--$name" . ($value === null ? '' : " $value"), $line);
+    }
+    printf("  %-28s %s\n", '-h, --help', 'print this help, then exit');
+    echo "\nYou can give --zone more than once.\n";
+    exit(0);
+}
+checkArgs($args, $options, $usage);
+$db = new Db($config->dbPath);
+$opts = getopt('', array_map(fn($name, $o) => $o[0] === null ? $name : "$name:", array_keys($options), $options));
 
 echo "ai-worklog ingest — db: {$config->dbPath}, tz: " . date_default_timezone_get() . "\n";
 
@@ -139,6 +165,36 @@ if (!isset($opts['skip-digests'])) {
         flock($digestLock, LOCK_UN);
         fclose($digestLock);
     }
+}
+
+/**
+ * Refuse what getopt() would silently drop — an unknown option, a stray word (getopt
+ * stops there and ignores the rest), an option without its value — before the DB opens.
+ */
+function checkArgs(array $args, array $options, string $usage): void
+{
+    for ($i = 0; $i < count($args); $i++) {
+        $arg = $args[$i];
+        $name = str_starts_with($arg, '--') ? explode('=', substr($arg, 2), 2)[0] : '';
+        $hasValue = str_contains($arg, '=');
+        if (!isset($options[$name]) || ($options[$name][0] === null && $hasValue)) {
+            usageError("unknown option: $arg", $usage);
+        }
+        if ($options[$name][0] === null) {
+            continue;
+        }
+        // getopt() reads the value after "=" or from the next word.
+        $value = $hasValue ? explode('=', $arg, 2)[1] : ($args[++$i] ?? '');
+        if ($value === '' || $value[0] === '-') {
+            usageError("missing value for --$name", $usage);
+        }
+    }
+}
+
+function usageError(string $message, string $usage): never
+{
+    fwrite(STDERR, "$message\n$usage\nphp ingest.php --help lists the options.\n");
+    exit(2);
 }
 
 /** Record a unix-timestamp marker in the settings table (used for freshness checks). */

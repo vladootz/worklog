@@ -5,6 +5,31 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 PORT="${PORT:-8111}"
+USAGE="usage: [PORT=N] ./serve.sh"
+
+print_help() {
+    cat <<EOF
+$USAGE
+
+Serves the dashboard at http://localhost:8111 until you press Ctrl-C. It does
+not ingest, except once when ai-worklog.db does not exist yet (without digests).
+If a server already answers on the port, it says so and exits.
+
+  PORT=N       serve on port N instead of 8111
+  -h, --help   print this help, then exit
+
+To ingest again every 5 minutes while the dashboard is open, use bin/worklog.
+EOF
+}
+
+for arg in "$@"; do
+    case "$arg" in -h | --help) print_help; exit 0 ;; esac
+done
+if [ $# -gt 0 ]; then
+    echo "unknown option: $1" >&2
+    echo "$USAGE" >&2
+    exit 2
+fi
 
 if ! command -v php >/dev/null; then
     echo "error: php not found — install PHP 8.2+ (e.g. brew install php)" >&2

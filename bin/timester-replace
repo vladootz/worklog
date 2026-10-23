@@ -25,21 +25,52 @@ function fail(string $message): never
     exit(1);
 }
 
+function usageError(string $message, string $usage): never
+{
+    fwrite(STDERR, "$message\n$usage\n");
+    exit(2);
+}
+
 // Parsed by hand: getopt() stops at the first non-option, so "file --to X" would drop --to.
 $usage = 'usage: bin/timester-replace <timester-backup.json> [--to YYYY-MM-DD] [--out PATH]';
+if (array_intersect(array_slice($argv, 1), ['-h', '--help']) !== []) {
+    echo <<<TXT
+    $usage
+
+    Rebuilds a timester backup so that its ai-worklog entries, their projects and
+    clients match worklog now (after renames, client changes, ignored projects).
+    It reads the backup and never changes it. It writes a new file, by default
+    timester-replace-<date>_<time>.json next to the backup. Import that file in
+    timester with the option that replaces all data.
+
+      <timester-backup.json>  a backup exported from timester, not an ai-worklog export
+      --to YYYY-MM-DD         last day to rebuild (default yesterday)
+      --out PATH              write the new file here
+      -h, --help              print this help, then exit
+
+    TXT;
+    exit(0);
+}
 $opts = [];
 $in = null;
 for ($i = 1; $i < $argc; $i++) {
     if (preg_match('/^--(to|out)(?:=(.*))?$/', $argv[$i], $m)) {
-        $opts[$m[1]] = $m[2] ?? ($argv[++$i] ?? fail($usage));
+        $value = $m[2] ?? ($argv[++$i] ?? '');
+        if ($value === '' || $value[0] === '-') {
+            usageError("missing value for --$m[1]", $usage);
+        }
+        $opts[$m[1]] = $value;
     } elseif (str_starts_with($argv[$i], '-') || $in !== null) {
-        fail($usage);
+        usageError("unknown option: {$argv[$i]}", $usage);
     } else {
         $in = $argv[$i];
     }
 }
-if ($in === null || !is_file($in)) {
-    fail($usage);
+if ($in === null) {
+    usageError('missing <timester-backup.json>', $usage);
+}
+if (!is_file($in)) {
+    fail("no such file: $in");
 }
 $backup = json_decode((string) file_get_contents($in), true);
 foreach (['clients', 'projects', 'tags', 'timeEntries'] as $key) {

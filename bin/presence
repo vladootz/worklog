@@ -1,16 +1,43 @@
 #!/bin/bash
 # Presence sampler: logs keyboard/mouse idle seconds once a minute, so ingest can
 # tell "away from the Mac" from "working outside the agent". Stays on this machine.
-#   bin/presence sample      append "<epoch> <idle_seconds> <zone>" to presence.log (launchd runs this)
-#   bin/presence install     load a LaunchAgent that samples every 60 s, also after login
-#   bin/presence uninstall   unload and remove the LaunchAgent (presence.log is kept)
-#   bin/presence status      show whether it is loaded and the newest samples
+# The subcommands are in print_help; launchd runs "bin/presence sample".
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOG="$ROOT/presence.log"
 LABEL="com.ai-worklog.presence"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 DOMAIN="gui/$(id -u)"
+USAGE="usage: bin/presence sample | install | uninstall | status"
+
+print_help() {
+    cat <<EOF
+$USAGE
+
+Records your keyboard and mouse idle time once a minute in presence.log, so
+ingest can tell "away from the Mac" from "working outside the agent". The
+samples stay on this Mac.
+
+  sample       append "<epoch> <idle_seconds> <zone>" to presence.log (launchd runs this)
+  install      load a LaunchAgent that samples every 60 s, also after login
+  uninstall    unload and remove the LaunchAgent (presence.log is kept)
+  status       show whether it is loaded and the newest samples
+  -h, --help   print this help, then exit
+EOF
+}
+
+usage_error() {
+    echo "$1" >&2
+    echo "$USAGE" >&2
+    exit 2
+}
+
+for arg in "$@"; do
+    case "$arg" in -h | --help) print_help; exit 0 ;; esac
+done
+if [ $# -gt 1 ]; then
+    usage_error "unknown option: $2"
+fi
 
 case "${1:-}" in
 sample)
@@ -56,8 +83,10 @@ status)
         echo "no samples yet"
     fi
     ;;
+'')
+    usage_error "missing subcommand"
+    ;;
 *)
-    sed -n '2,7p' "$0"
-    exit 1
+    usage_error "unknown option: $1"
     ;;
 esac

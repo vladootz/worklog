@@ -4,6 +4,55 @@
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORT=8111
+USAGE="usage: bin/worklog [--skip-digests] [--digest-days N]"
+
+print_help() {
+    cat <<EOF
+$USAGE
+
+Ingests, serves the dashboard at http://localhost:8111 and opens it in your
+browser. Then it ingests again every 5 minutes. If a server already answers on
+that port, it uses that server. Ctrl-C stops the loop, and the server if
+bin/worklog started it.
+
+  --skip-digests    pass --skip-digests to every ingest (no Ollama digests)
+  --digest-days N   pass --digest-days N to every ingest
+  -h, --help        print this help, then exit
+
+For a one-time run (--digests-only, --digest-from, --digest-to, --recoalesce,
+--zone, --zones), use php ingest.php.
+EOF
+}
+
+usage_error() { # message [hint]
+    echo "$1" >&2
+    echo "$USAGE" >&2
+    if [ $# -gt 1 ]; then echo "$2" >&2; fi
+    exit 2
+}
+
+# The arguments go to every ingest pass, so only the options that make sense every
+# 5 minutes are accepted. Checked here, before the first ingest.
+check_args() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+        --skip-digests | --digest-days=[!-]*) ;;
+        --digest-days)
+            case "${2:-}" in '' | -*) usage_error "missing value for --digest-days" ;; esac
+            shift
+            ;;
+        --digest-days=*) usage_error "missing value for --digest-days" ;;
+        --digests-only | --digest-from | --digest-from=* | --digest-to | --digest-to=* | --recoalesce | --zone | --zone=* | --zones)
+            usage_error "unknown option: $1" "Run one-time ingest options with php ingest.php." ;;
+        *) usage_error "unknown option: $1" ;;
+        esac
+        shift
+    done
+}
+for arg in "$@"; do
+    case "$arg" in -h | --help) print_help; exit 0 ;; esac
+done
+check_args "$@"
 
 php "$ROOT/ingest.php" "$@"
 
