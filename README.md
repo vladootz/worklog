@@ -20,7 +20,7 @@ You need:
 Get the code:
 
 ```sh
-git clone https://github.com/vladootz/ai-worklog.git && cd ai-worklog
+git clone https://github.com/vladootz/worklog.git && cd worklog
 ```
 
 Then run it in one of two ways.
