@@ -38,8 +38,9 @@ DOM layer are all hand-rolled on purpose.
 ## Running it
 
 ```sh
-./serve.sh                                          # ingest + serve on :8111
-bin/worklog                                         # ingest → serve → open → re-ingest every 5 min
+./serve.sh                                          # serve on :8111 (PORT=N to change); ingests once if no DB yet
+bin/worklog [--skip-digests] [--digest-days N]      # ingest → serve → open → re-ingest every 5 min
+<command> -h | --help                               # usage on stdout, exit 0, touches nothing (all five commands)
 php ingest.php                                      # incremental ingest + digests (last 30 days)
 php ingest.php --skip-digests                       # time stats only, ~8s
 php ingest.php --digests-only                       # Ollama pass only
@@ -51,6 +52,13 @@ bin/timester-replace <timester-backup.json> [--to YYYY-MM-DD] [--out PATH]   # r
 php ingest.php --zone 2026-07-15=Europe/Bucharest   # you were there from that local midnight (repeatable)
 php -S localhost:8111 -t public public/index.php    # serve only
 ```
+
+**Arguments are checked before any side effect.** An unknown option, a stray word or a missing value
+exits 2 (`unknown option: <arg>` / `missing value for --<opt>` + usage on stderr) before the DB opens,
+a server starts or launchd changes; runtime errors stay exit 1. `getopt()` alone silently drops unknown
+options and stops at the first stray word, which once turned `bin/worklog --help` into a full ingest.
+In `ingest.php` the `$options` table drives `getopt()`, `checkArgs()` and `--help`: add a flag there.
+`bin/worklog` takes only the every-pass flags and refuses the one-time ones with a pointer to `php ingest.php`.
 
 Under Laravel Herd the repo serves at **https://worklog.test** with no `serve.sh`.
 `LocalValetDriver.php` pins the docroot to `public/`, which is what keeps `ai-worklog.db`,
@@ -179,3 +187,11 @@ Run the gate: `php -l` every touched PHP file, `node --check` every touched JS f
 `https://worklog.test` at **1440 and 390** — console clean, no PHP notice in the page, no
 horizontal page scroll, keyboard path intact. Update this file in the same task when a change
 affects anything documented here.
+
+README's `## Commands` blocks are the verbatim `--help` output of each command, between
+`<!-- help: <cmd> -->` and `<!-- /help -->`. A changed usage text means a changed block, in the
+same task. This must print `ok` for every command (it runs each `--help`, which writes nothing):
+
+```sh
+grep -o "<!-- help: .* -->" README.md | sed "s/<!-- help: \(.*\) -->/\1/" | while read -r cmd; do if diff <(sh -c "$cmd" </dev/null) <(awk -v m="<!-- help: $cmd -->" '$0==m{f=1;next} f&&/^```$/{if(++n==2)exit;next} f' README.md) >/dev/null; then echo "ok    $cmd"; else echo "DIFF  $cmd"; fi; done
+```
